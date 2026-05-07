@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "RestaurantN",
+    "slug": "restaurantn-client",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/app-logo.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/app-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.restaurantn.client",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "186.246.5.94": {
+              "NSTemporaryExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": false
+            }
+          }
+        }
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/app-logo.png",
+        "backgroundColor": "#000000"
+      },
+      "package": "com.restaurantn.client",
+      "googleServicesFile": "./google-services.json",
+      "usesCleartextTraffic": true
+    },
+    "web": {
+      "favicon": "./assets/app-logo.png"
+    },
+    "extra": {
+      "useMockApi": false,
+      "integratedBackend": "syncflow",
+      "apiBaseUrl": "http://186.246.5.94/api",
+      "enablePremiumTabGestures": false,
+      "eas": {
+        "projectId": "0b66b85a-bf8a-4a81-94d5-7367569a1e9c"
+      }
+    },
+    "plugins": [
+      "expo-font",
+      "expo-video"
+    ]
+  }
+}

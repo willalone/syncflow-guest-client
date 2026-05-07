@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "897675193975",
+    "project_id": "syncflow-restaurant",
+    "storage_bucket": "syncflow-restaurant.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:897675193975:android:d60636a58b2d4e3376a072",
+        "android_client_info": {
+          "package_name": "com.restaurantn.client"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBjfEL7wFEkW1GMjC4z8-TtiP8oa8yeVd4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
