@@ -25,7 +25,7 @@ export default function GuestOrderHintCard({ colors, onOpenAuth }) {
 const styles = StyleSheet.create({
   card: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius['2xl'],
     padding: spacing.md,
     marginTop: spacing.sm,
     gap: spacing.xs,
@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: spacing.xs,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.pill,
     alignItems: 'center',
     paddingVertical: spacing.sm,
   },

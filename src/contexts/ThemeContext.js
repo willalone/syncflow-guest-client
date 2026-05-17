@@ -37,16 +37,26 @@ export const ThemeProvider = ({ children }) => {
     }
   }, []);
 
-  const toggleTheme = useCallback(() => {
-    const newTheme = !isDarkMode;
-    setIsDarkMode(newTheme);
-    saveTheme(newTheme ? 'dark' : 'light');
-  }, [isDarkMode, saveTheme]);
+  const setThemeMode = useCallback(
+    (dark) => {
+      setIsDarkMode(Boolean(dark));
+      saveTheme(dark ? 'dark' : 'light');
+    },
+    [saveTheme]
+  );
 
-  const value = useMemo(() => ({
-    isDarkMode,
-    toggleTheme,
-  }), [isDarkMode, toggleTheme]);
+  const toggleTheme = useCallback(() => {
+    setThemeMode(!isDarkMode);
+  }, [isDarkMode, setThemeMode]);
+
+  const value = useMemo(
+    () => ({
+      isDarkMode,
+      toggleTheme,
+      setThemeMode,
+    }),
+    [isDarkMode, toggleTheme, setThemeMode]
+  );
 
   return (
     <ThemeContext.Provider value={value}>

@@ -1,46 +1,34 @@
 import { syncflowGuestRequest } from '../../syncflowHttp';
 import { readAuthSession, writeAuthSession } from '../../authSessionStorage';
+import { authUserFieldsEqual } from '../../../utils/authSessionCompare';
 import { mapBonusTransactionToClient, normalizeSyncflowListResponse } from '../syncflowMappers';
 import { apiDateToDdMmYyyy, birthDdMmYyyyToApiIso, pickFirstFinite } from './shared';
 
-export async function fetchUserProfile(_userId) {
-  const session = await readAuthSession();
-  const u = session?.user || {};
-  let profileRaw = {};
-  try {
-    profileRaw = await syncflowGuestRequest('/guest/profile');
-  } catch {
-    profileRaw = {};
-  }
-  let balance = NaN;
-  try {
-    const raw = await syncflowGuestRequest('/bonus/my/balance');
-    if (typeof raw === 'number' || typeof raw === 'string') {
-      balance = Number(raw);
-    } else if (raw && typeof raw === 'object') {
-      balance = pickFirstFinite([raw.balance, raw.amount, raw.value], NaN);
-    }
-  } catch {
-    balance = NaN;
-  }
-  if (!Number.isFinite(balance)) {
-    balance = pickFirstFinite([profileRaw.bonusBalance, profileRaw.bonus_balance, profileRaw.loyaltyPoints], 0);
-  }
+const PROFILE_FETCH_COOLDOWN_MS = 5000;
+
+const profileCoalesce = {
+  inflight: null,
+  inflightUserId: null,
+  lastAt: 0,
+  lastUserId: null,
+  lastValue: null,
+};
+
+export function resetProfileFetchCoalescing() {
+  profileCoalesce.inflight = null;
+  profileCoalesce.inflightUserId = null;
+  profileCoalesce.lastAt = 0;
+  profileCoalesce.lastUserId = null;
+  profileCoalesce.lastValue = null;
+}
+
+function buildProfileFromSources({ profileRaw, sessionUser, balance }) {
+  const u = sessionUser || {};
   const resolvedFirstName = profileRaw?.firstName ?? u.firstName;
   const resolvedLastName = profileRaw?.lastName ?? u.lastName;
   const resolvedEmail = profileRaw?.email ?? u.email ?? '';
   const resolvedLogin = profileRaw?.login ?? u.login;
   const resolvedPhone = profileRaw?.phoneNumber ?? u.phoneNumber ?? u.phone ?? '';
-  const nextUser = {
-    ...u,
-    id: profileRaw?.id != null ? String(profileRaw.id) : String(u.id ?? ''),
-    firstName: resolvedFirstName,
-    lastName: resolvedLastName,
-    login: resolvedLogin,
-    email: resolvedEmail,
-    phoneNumber: resolvedPhone,
-  };
-  if (session) await writeAuthSession({ ...session, user: nextUser });
   const displayName =
     [resolvedFirstName, resolvedLastName].filter(Boolean).join(' ').trim() || resolvedLogin || '';
   const roleRaw = profileRaw?.role != null ? String(profileRaw.role).trim() : '';
@@ -75,7 +63,7 @@ export async function fetchUserProfile(_userId) {
     profileRaw?.registrationDate != null ? String(profileRaw.registrationDate).trim() : undefined;
 
   return {
-    id: String(nextUser.id || u.id || ''),
+    id: String(profileRaw?.id != null ? profileRaw.id : u.id ?? ''),
     firstName: resolvedFirstName,
     lastName: resolvedLastName,
     patronymic,
@@ -91,7 +79,93 @@ export async function fetchUserProfile(_userId) {
     discountPercentage,
     visitCount,
     registrationDate,
+    sessionUser: {
+      ...u,
+      id: profileRaw?.id != null ? String(profileRaw.id) : String(u.id ?? ''),
+      firstName: resolvedFirstName,
+      lastName: resolvedLastName,
+      login: resolvedLogin,
+      email: resolvedEmail,
+      phoneNumber: resolvedPhone,
+    },
   };
+}
+
+async function fetchUserProfileUncached(_userId) {
+  const session = await readAuthSession();
+  const u = session?.user || {};
+  let profileRaw = {};
+  let profileFetchOk = false;
+  try {
+    profileRaw = (await syncflowGuestRequest('/guest/profile')) || {};
+    profileFetchOk = true;
+  } catch {
+    profileRaw = {};
+  }
+  let balance = NaN;
+  try {
+    const raw = await syncflowGuestRequest('/bonus/my/balance');
+    if (typeof raw === 'number' || typeof raw === 'string') {
+      balance = Number(raw);
+    } else if (raw && typeof raw === 'object') {
+      balance = pickFirstFinite([raw.balance, raw.amount, raw.value], NaN);
+    }
+  } catch {
+    balance = NaN;
+  }
+  if (!Number.isFinite(balance)) {
+    balance = pickFirstFinite([profileRaw.bonusBalance, profileRaw.bonus_balance, profileRaw.loyaltyPoints], 0);
+  }
+
+  const built = buildProfileFromSources({ profileRaw, sessionUser: u, balance });
+  const nextUser = built.sessionUser;
+  delete built.sessionUser;
+
+  if (session && profileFetchOk && !authUserFieldsEqual(session.user, nextUser)) {
+    await writeAuthSession({ ...session, user: nextUser });
+  }
+
+  return built;
+}
+
+export async function fetchUserProfile(userId, options = {}) {
+  const uid = String(userId ?? '');
+  const force = options.force === true;
+  const now = Date.now();
+
+  if (
+    profileCoalesce.inflight &&
+    profileCoalesce.inflightUserId === uid
+  ) {
+    return profileCoalesce.inflight;
+  }
+
+  if (
+    !force &&
+    profileCoalesce.lastValue &&
+    profileCoalesce.lastUserId === uid &&
+    now - profileCoalesce.lastAt < PROFILE_FETCH_COOLDOWN_MS
+  ) {
+    return profileCoalesce.lastValue;
+  }
+
+  const promise = fetchUserProfileUncached(uid)
+    .then((value) => {
+      profileCoalesce.lastAt = Date.now();
+      profileCoalesce.lastUserId = uid;
+      profileCoalesce.lastValue = value;
+      return value;
+    })
+    .finally(() => {
+      if (profileCoalesce.inflight === promise) {
+        profileCoalesce.inflight = null;
+        profileCoalesce.inflightUserId = null;
+      }
+    });
+
+  profileCoalesce.inflight = promise;
+  profileCoalesce.inflightUserId = uid;
+  return promise;
 }
 
 export async function updateUserProfile(_userId, patch) {
@@ -117,7 +191,7 @@ export async function updateUserProfile(_userId, patch) {
       body: JSON.stringify(payload),
     });
   }
-  return fetchUserProfile(_userId);
+  return fetchUserProfile(_userId, { force: true });
 }
 
 export async function fetchFavorites(_userId) {

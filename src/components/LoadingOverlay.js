@@ -46,7 +46,7 @@ export default function LoadingOverlay({ visible, title = 'Загрузка' }) 
   });
 
   return (
-    <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
+    <View style={[styles.overlay, { backgroundColor: colors.overlay }]} pointerEvents="auto">
       <Animated.View
         style={[
           styles.loader,

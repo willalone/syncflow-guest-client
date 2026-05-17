@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { borderRadius, getColors, spacing, typography } from '../constants/theme';
-import BrandHeaderAccent from '../components/BrandHeaderAccent';
+import { borderRadius, getColors, getShadows, layout, spacing, typography } from '../constants/theme';
+import ScreenBackdrop from '../components/ScreenBackdrop';
 import { useTheme } from '../contexts/ThemeContext';
 import { applyDateMask, isValidDateMask, isValidTimeMask } from '../utils/inputMasks';
 import { DEFAULT_VENUE_LABEL } from '../constants/venue';
@@ -50,10 +50,12 @@ export default function BookingScreen({
   dishes = [],
   onGoToMenuForPreorder,
   onChangeCartQty,
+  networkOffline = false,
 }) {
   const { isDarkMode } = useTheme();
   const { width } = useWindowDimensions();
   const colors = getColors(isDarkMode);
+  const shadowsThemed = useMemo(() => getShadows(isDarkMode), [isDarkMode]);
   const isWide = width >= 768;
   const [people, setPeople] = useState('2');
   const [date, setDate] = useState(applyDateMask(new Date().toLocaleDateString('ru-RU')));
@@ -161,7 +163,7 @@ export default function BookingScreen({
   }, [date, servingTime, time]);
 
   const handleSubmit = async () => {
-    if (isSubmitting) return;
+    if (isSubmitting || networkOffline) return;
     const tableId = selected || filteredTables[0]?.id;
     if (!tableId) {
       setStatus('Нет доступных столов');
@@ -223,17 +225,18 @@ export default function BookingScreen({
   );
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-      <ScrollView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={styles.content}
+    <ScreenBackdrop isDarkMode={isDarkMode}>
+      <SafeAreaView style={styles.safe}>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         nestedScrollEnabled
       >
         <View style={styles.hero}>
-          <BrandHeaderAccent kicker="СТОЛ" />
-          <Text style={[styles.title, { color: colors.text }]}>Бронирование стола</Text>
+          <Text style={[styles.kicker, { color: colors.textMuted }]}>СТОЛ</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Бронирование</Text>
         </View>
 
         <BookingFormSection
@@ -282,25 +285,39 @@ export default function BookingScreen({
         {Boolean(status) && <Text style={[styles.status, { color: colors.success }]}>{status}</Text>}
 
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: colors.accent, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}
+          style={[
+            styles.button,
+            shadowsThemed.medium,
+            {
+              backgroundColor: networkOffline ? colors.textMuted : colors.primary,
+              opacity: networkOffline ? 0.85 : 1,
+            },
+          ]}
           onPress={handleSubmit}
-          disabled={isSubmitting}
+          disabled={isSubmitting || networkOffline}
         >
           <Text style={[styles.buttonText, { color: colors.black }]}>
-            {isSubmitting ? 'Отправляем...' : 'Подтвердить'}
+            {networkOffline ? 'Нет сети' : isSubmitting ? 'Отправляем...' : 'Подтвердить бронь'}
           </Text>
         </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </ScreenBackdrop>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  container: { flex: 1 },
-  content: { padding: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing['2xl'], minHeight: '100%' },
-  hero: { marginBottom: spacing.md },
-  title: { ...typography.h2, marginBottom: spacing.sm, marginTop: 0 },
+  safe: { flex: 1, backgroundColor: 'transparent' },
+  container: { flex: 1, backgroundColor: 'transparent' },
+  content: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.md,
+    paddingBottom: spacing['2xl'],
+    minHeight: '100%',
+  },
+  hero: { marginBottom: spacing.lg, gap: 4 },
+  kicker: { ...typography.kicker },
+  title: { ...typography.h1, fontSize: 28, lineHeight: 34, letterSpacing: -0.6 },
   form: { gap: spacing.sm },
   formWide: { flexDirection: 'row', flexWrap: 'wrap' },
   fieldWrap: { width: '100%' },
@@ -309,7 +326,7 @@ const styles = StyleSheet.create({
   fieldHint: { ...typography.caption, marginBottom: spacing.xs },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     ...typography.body,
@@ -318,7 +335,7 @@ const styles = StyleSheet.create({
   },
   counterField: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -332,11 +349,11 @@ const styles = StyleSheet.create({
   calendarButton: {
     minWidth: 48,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  calendar: { marginTop: spacing.xs, borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius.lg, padding: spacing.sm },
+  calendar: { marginTop: spacing.xs, borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius.xl, padding: spacing.sm },
   calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   calendarNav: { fontSize: 20, fontWeight: '700', paddingHorizontal: spacing.sm },
   calendarMonth: { ...typography.body, fontWeight: '600', textTransform: 'capitalize' },
@@ -346,7 +363,7 @@ const styles = StyleSheet.create({
   errorText: { ...typography.caption, marginTop: spacing.xs },
   subtitle: { ...typography.h4, marginTop: spacing.lg, marginBottom: spacing.sm },
   preorderHint: { ...typography.caption, marginBottom: spacing.sm },
-  preorderCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius.lg, padding: spacing.md, gap: spacing.xs },
+  preorderCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius['2xl'], padding: spacing.md, gap: spacing.xs },
   preorderLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   preorderLineText: { ...typography.body, flex: 1 },
   preorderLinePrice: { ...typography.caption, minWidth: 72, textAlign: 'right' },
@@ -355,7 +372,7 @@ const styles = StyleSheet.create({
   preorderTotal: { ...typography.body, fontWeight: '700', marginTop: spacing.sm },
   secondaryBtn: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     paddingVertical: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -364,7 +381,7 @@ const styles = StyleSheet.create({
   tables: { gap: spacing.sm },
   tableCard: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.xl,
     padding: spacing.md,
   },
   tableImage: {
@@ -377,7 +394,7 @@ const styles = StyleSheet.create({
   status: { ...typography.body, marginTop: spacing.md },
   button: {
     marginTop: spacing.lg,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.pill,
     alignItems: 'center',
     paddingVertical: spacing.md,
   },

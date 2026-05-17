@@ -37,6 +37,10 @@ export function subscribeNetworkConnection(listener) {
   };
 }
 
+export function getTransportDown() {
+  return transportDown;
+}
+
 function pickJsonErrorMessage(parsed) {
   if (parsed == null || typeof parsed !== 'object') return null;
   const err = parsed.error;

@@ -13,6 +13,7 @@ import AuthScreen from '../screens/AuthScreen';
 import MenuScreen from '../screens/MenuScreen';
 import DishDetailsScreen from '../screens/DishDetailsScreen';
 import CartScreen from '../screens/CartScreen';
+import CheckoutScreen from '../screens/CheckoutScreen';
 import BookingScreen from '../screens/BookingScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
@@ -23,6 +24,8 @@ import BookingDetailScreen from '../screens/BookingDetailScreen';
 import TabBar from '../components/TabBar';
 import AppToast from '../components/AppToast';
 import LoadingOverlay from '../components/LoadingOverlay';
+import OfflineBanner from '../components/OfflineBanner';
+import { useNetwork } from '../contexts/NetworkContext';
 import { CLIENT_APP_TITLE } from '../constants/venue';
 import { useToastManager } from '../hooks/useToastManager';
 import { useNetworkRecovery } from '../hooks/useNetworkRecovery';
@@ -82,8 +85,10 @@ export default function AppNavigator() {
   const wasAuthenticatedRef = useRef(false);
   const preorderActiveRef = useRef(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [forceHideBlockingOverlay, setForceHideBlockingOverlay] = useState(false);
   const registeredPushUserRef = useRef(null);
   const tabNavigationRef = useRef(null);
+  const { isOffline } = useNetwork();
   const { toast, showRawToast } = useToastManager();
   const { showToast } = useNetworkRecovery(showRawToast);
   const {
@@ -115,12 +120,27 @@ export default function AppNavigator() {
     payOrder,
     showToast,
     navigateToScreen,
+    isOffline,
   });
 
   React.useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1200);
     return () => clearTimeout(timer);
   }, []);
+
+  /** Страховка: полноэкранный LoadingOverlay не должен блокировать UI бесконечно. */
+  React.useEffect(() => {
+    const blocking = isLoading || isLoadingSession || isBootstrapping;
+    if (!blocking) {
+      setForceHideBlockingOverlay(false);
+      return undefined;
+    }
+    const watchdog = setTimeout(() => {
+      setIsLoading(false);
+      setForceHideBlockingOverlay(true);
+    }, 20000);
+    return () => clearTimeout(watchdog);
+  }, [isLoading, isLoadingSession, isBootstrapping]);
 
   React.useEffect(() => {
     const justSignedIn = isAuthenticated && !wasAuthenticatedRef.current;
@@ -145,6 +165,7 @@ export default function AppNavigator() {
       currentScreen === 'Booking' ||
       currentScreen === 'Menu' ||
       currentScreen === 'Cart' ||
+      currentScreen === 'Checkout' ||
       Boolean(selectedDish);
     if (inPreorderFlow) {
       preorderActiveRef.current = true;
@@ -234,15 +255,12 @@ export default function AppNavigator() {
             cartItems={cartItems}
             dishes={menu.dishes}
             onChangeQty={changeQty}
-            onCheckout={onCheckout}
-            onAddToCart={addCartItem}
-            onValidationError={(message) => showToast('error', message)}
-            onPromoMessage={(type, message) => showToast(type, message)}
-            loyaltyPoints={profile?.loyaltyPoints || 0}
-            guestDiscountPercentage={profile?.discountPercentage}
-            appliedPromo={appliedPromo}
-            onApplyPromo={applyPromo}
-            onClearPromo={clearPromo}
+            onProceedToCheckout={() => {
+              if (cartItems.length > 0 && !isOffline) {
+                navigateToScreen('Checkout');
+              }
+            }}
+            networkOffline={isOffline}
           />
         );
       case 'Booking':
@@ -258,6 +276,7 @@ export default function AppNavigator() {
             onChangeCartQty={changeQty}
             onRequestAvailableTables={refreshAvailableTables}
             onSubmitBooking={onBookingSubmit}
+            networkOffline={isOffline}
           />
         );
       case 'Profile':
@@ -271,7 +290,7 @@ export default function AppNavigator() {
       default:
         return null;
     }
-  }, [menu.dishes, menu.categories, favorites, toggleFavorite, cartItems, changeQty, onCheckout, addCartItem, profile?.loyaltyPoints, profile?.discountPercentage, appliedPromo, applyPromo, clearPromo, tables, preorderContext, navigateToScreen, refreshAvailableTables, onBookingSubmit, showToast]);
+  }, [menu.dishes, menu.categories, favorites, toggleFavorite, cartItems, changeQty, tables, preorderContext, navigateToScreen, refreshAvailableTables, onBookingSubmit, isOffline]);
 
   const renderNativeTabs = React.useMemo(() => (
     <NavigationContainer
@@ -332,6 +351,26 @@ export default function AppNavigator() {
       );
     }
 
+    if (currentScreen === 'Checkout') {
+      return (
+        <CheckoutScreen
+          onBack={() => navigateToScreen('Cart')}
+          cartItems={cartItems}
+          dishes={menu.dishes}
+          onCheckout={onCheckout}
+          onAddToCart={addCartItem}
+          onValidationError={(message) => showToast('error', message)}
+          onPromoMessage={(type, message) => showToast(type, message)}
+          loyaltyPoints={profile?.loyaltyPoints || 0}
+          guestDiscountPercentage={profile?.discountPercentage}
+          appliedPromo={appliedPromo}
+          onApplyPromo={applyPromo}
+          onClearPromo={clearPromo}
+          networkOffline={isOffline}
+        />
+      );
+    }
+
     if (currentScreen === 'Notifications') {
       return (
         <NotificationsScreen
@@ -377,7 +416,9 @@ export default function AppNavigator() {
     return null;
   }, [
     selectedBooking, fetchBookingDetail, selectedDish, menu.dishes, addToCart, isAuthenticated,
-    currentScreen, notifications, openNotificationTarget, markAllNotificationsRead, notificationsHasMore,
+    currentScreen, cartItems, onCheckout, addCartItem, profile?.loyaltyPoints, profile?.discountPercentage,
+    appliedPromo, applyPromo, clearPromo, isOffline,
+    notifications, openNotificationTarget, markAllNotificationsRead, notificationsHasMore,
     isLoadingMoreNotifications, loadMoreNotifications, orders, payOrder,
     submitOrderReview, ordersHasMore, isLoadingMoreOrders, loadMoreOrders,
     bookings, navigateToScreen, showToast,
@@ -385,6 +426,7 @@ export default function AppNavigator() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <OfflineBanner />
       <View style={styles.screenTransition}>
         {isLoadingSession ? null : isAuthenticated ? (
           renderNativeTabs
@@ -482,7 +524,12 @@ export default function AppNavigator() {
           <Text style={[styles.guestAuthCtaText, { color: colors.black }]}>Войти / Регистрация</Text>
         </TouchableOpacity>
       ) : null}
-      <LoadingOverlay visible={isLoading || isLoadingSession || isBootstrapping} title={CLIENT_APP_TITLE} />
+      <LoadingOverlay
+        visible={
+          !forceHideBlockingOverlay && (isLoading || isLoadingSession || isBootstrapping)
+        }
+        title={CLIENT_APP_TITLE}
+      />
     </View>
   );
 }
@@ -507,6 +554,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 26,
     backgroundColor: 'transparent',
+    zIndex: 2,
   },
   rightEdgeSwipeZone: {
     position: 'absolute',
@@ -515,6 +563,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 26,
     backgroundColor: 'transparent',
+    zIndex: 2,
   },
   modalBackdrop: {
     flex: 1,

@@ -1,12 +1,11 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { borderRadius, spacing, typography } from '../constants/theme';
+import { borderRadius, layout, spacing, typography } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import DishImage from './DishImage';
-import GradientBorderCard from './GradientBorderCard';
+import SurfaceCard from './ui/SurfaceCard';
 import { getRoleBadge, getRoleColor, getRoleLabel } from '../utils/dishBadges';
-
-const CARD_OUTER_RADIUS = borderRadius.xl + 2;
 
 export default function MenuDishCard({
   dish,
@@ -18,53 +17,42 @@ export default function MenuDishCard({
   favorites = [],
   onToggleFavorite,
   showFavorite = true,
-  priceSuffix = ' руб',
+  priceSuffix = ' ₽',
 }) {
+  const { isDarkMode } = useTheme();
   const role = useMemo(() => getRoleBadge(dish), [dish]);
   const showHit = ['Локомотив', 'Премиум-якорь'].includes(role);
+  const imageSize = isCompact ? 80 : 96;
 
   return (
-    <View>
-      <TouchableOpacity
-        activeOpacity={0.93}
-        onPress={() => onPress(dish)}
-        style={[
-          styles.cardWrap,
-          isTablet ? styles.cardWrapTablet : null,
-          shadowsThemed.float,
-          { borderRadius: CARD_OUTER_RADIUS },
-        ]}
-      >
-        <GradientBorderCard
-          colors={colors}
-          innerStyle={[
-            styles.cardInner,
-            isCompact ? styles.cardInnerCompact : null,
-            isTablet ? styles.cardInnerTablet : null,
-          ]}
-        >
-          <View style={styles.imageWrap}>
+    <TouchableOpacity activeOpacity={0.9} onPress={() => onPress(dish)} style={isTablet ? styles.wrapTablet : styles.wrap}>
+      <SurfaceCard colors={colors} shadows={shadowsThemed} radius={borderRadius['2xl']} style={styles.card}>
+        <View style={[styles.row, isCompact ? styles.rowCompact : null]}>
+          <View
+            style={[
+              styles.imageWrap,
+              {
+                width: imageSize,
+                height: imageSize,
+                backgroundColor: colors.cardElevated,
+              },
+            ]}
+          >
             <DishImage
               uri={dish.imageUrl}
               title={dish.title}
-              style={[styles.image, isCompact ? styles.imageCompact : null]}
+              style={{ width: imageSize - 8, height: imageSize - 8, borderRadius: borderRadius.lg }}
               borderRadius={borderRadius.lg}
+              contentFit="contain"
             />
             {showHit ? (
-              <View
-                style={[
-                  styles.imageRoleBadge,
-                  {
-                    backgroundColor: `${getRoleColor(role)}DD`,
-                    borderColor: 'transparent',
-                  },
-                ]}
-              >
-                <Text style={[styles.imageRoleText, { color: '#FFFFFF' }]}>{getRoleLabel(role)}</Text>
+              <View style={[styles.imageRoleBadge, { backgroundColor: `${getRoleColor(role)}E6` }]}>
+                <Text style={styles.imageRoleText}>{getRoleLabel(role)}</Text>
               </View>
             ) : null}
           </View>
-          <View style={[styles.content, isTablet ? styles.contentTablet : null]}>
+
+          <View style={styles.content}>
             <View style={styles.nameRow}>
               <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.name, { color: colors.text }]}>
                 {dish.title}
@@ -73,20 +61,19 @@ export default function MenuDishCard({
                 <TouchableOpacity onPress={() => onToggleFavorite?.(dish.id)} hitSlop={12}>
                   <Ionicons
                     name={favorites.includes(dish.id) ? 'heart' : 'heart-outline'}
-                    size={18}
+                    size={20}
                     color={favorites.includes(dish.id) ? colors.error : colors.textMuted}
                   />
                 </TouchableOpacity>
               ) : null}
             </View>
             {dish.weight ? (
-              <Text numberOfLines={1} style={[styles.meta, { color: colors.textLight }]}>
+              <Text numberOfLines={1} style={[styles.meta, { color: colors.textMuted }]}>
                 {dish.weight}
               </Text>
-            ) : null}
-            {dish.foodCostPercent ? (
+            ) : dish.description ? (
               <Text numberOfLines={1} style={[styles.meta, { color: colors.textMuted }]}>
-                Фудкост {dish.foodCostPercent}%
+                {dish.description}
               </Text>
             ) : null}
             <View style={styles.footer}>
@@ -94,69 +81,99 @@ export default function MenuDishCard({
                 {dish.price}
                 {priceSuffix}
               </Text>
-              {dish.rating != null ? (
-                <View style={[styles.rate, { backgroundColor: colors.backgroundLight }]}>
-                  <Text style={[styles.rateText, { color: colors.warning }]}>Рейтинг {dish.rating}</Text>
-                </View>
-              ) : null}
+              <View
+                style={[
+                  styles.addFab,
+                  { backgroundColor: colors.primary },
+                  isDarkMode && shadowsThemed?.glowLime ? shadowsThemed.glowLime : null,
+                ]}
+              >
+                <Ionicons name="add" size={22} color={colors.black} />
+              </View>
             </View>
           </View>
-        </GradientBorderCard>
-      </TouchableOpacity>
-    </View>
+        </View>
+      </SurfaceCard>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  cardWrap: {
-    marginBottom: 10,
-    borderRadius: CARD_OUTER_RADIUS,
+  wrap: {
+    marginBottom: spacing.md,
   },
-  cardWrapTablet: {
+  wrapTablet: {
     flex: 1,
     minWidth: 0,
     marginHorizontal: spacing.xs,
+    marginBottom: spacing.md,
   },
-  cardInner: {
-    padding: spacing.md,
+  card: {
+    marginBottom: 0,
+  },
+  row: {
     flexDirection: 'row',
-    minHeight: 136,
+    alignItems: 'center',
+    gap: spacing.md,
   },
-  cardInnerCompact: {
-    padding: spacing.sm,
-    minHeight: 126,
+  rowCompact: {
+    gap: spacing.sm,
   },
-  cardInnerTablet: {
-    flexDirection: 'column',
-  },
-  image: {
-    width: 88,
-    height: 88,
+  imageWrap: {
+    position: 'relative',
     borderRadius: borderRadius.lg,
-    backgroundColor: '#DDE3EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  imageCompact: {
-    width: 76,
-    height: 76,
-  },
-  imageWrap: { position: 'relative' },
   imageRoleBadge: {
     position: 'absolute',
     left: 6,
     top: 6,
-    borderWidth: 1,
-    borderRadius: borderRadius.round,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: borderRadius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  imageRoleText: { ...typography.caption, fontSize: 8, fontWeight: '700' },
-  content: { flex: 1, marginLeft: spacing.md, justifyContent: 'space-between' },
-  contentTablet: { marginLeft: 0, marginTop: spacing.md },
-  nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
-  name: { ...typography.h4, flex: 1, marginRight: spacing.sm },
-  meta: { ...typography.caption },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  price: { ...typography.numeric },
-  rate: { borderRadius: borderRadius.round, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  rateText: { ...typography.caption, fontWeight: '600' },
+  imageRoleText: {
+    ...typography.caption,
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  content: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  name: {
+    ...typography.h4,
+    flex: 1,
+  },
+  meta: {
+    ...typography.caption,
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.xs,
+  },
+  price: {
+    ...typography.numeric,
+    fontSize: 17,
+  },
+  addFab: {
+    width: layout.fabSize,
+    height: layout.fabSize,
+    borderRadius: borderRadius.round,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

@@ -29,7 +29,7 @@ export default function ProfileHeaderCard({ colors, shadowsThemed, fullName, rol
 
 const styles = StyleSheet.create({
   profileCard: {
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius['2xl'],
     padding: spacing.lg,
     marginBottom: spacing.md,
     borderWidth: StyleSheet.hairlineWidth,
@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 64,
     height: 64,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,

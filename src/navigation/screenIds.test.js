@@ -18,6 +18,7 @@ describe('screenIds', () => {
 
   test('isOverlayScreen', () => {
     expect(isOverlayScreen('Orders')).toBe(true);
+    expect(isOverlayScreen('Checkout')).toBe(true);
     expect(isOverlayScreen('Menu')).toBe(false);
     expect(OVERLAY_SCREEN_IDS).toContain('Notifications');
   });

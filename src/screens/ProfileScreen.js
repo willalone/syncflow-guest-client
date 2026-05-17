@@ -8,8 +8,8 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getColors, getShadows, spacing, borderRadius, typography } from '../constants/theme';
-import BrandHeaderAccent from '../components/BrandHeaderAccent';
+import { getColors, getShadows, layout, spacing, borderRadius, typography } from '../constants/theme';
+import ScreenBackdrop from '../components/ScreenBackdrop';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useClientData } from '../contexts/ClientDataContext';
@@ -20,13 +20,14 @@ import ProfileHeaderCard from './profile/ProfileHeaderCard';
 import ProfileStatsCard from './profile/ProfileStatsCard';
 import ProfileHistorySection, { ProfileHistoryCard } from './profile/ProfileHistorySection';
 import DeleteAccountModal from './profile/DeleteAccountModal';
+import ThemeToggle from '../components/profile/ThemeToggle';
 
 export default function ProfileScreen({
   onOpenNotifications,
   onOpenBookings,
   onOpenOrders,
 }) {
-  const { isDarkMode, toggleTheme } = useTheme();
+  const { isDarkMode } = useTheme();
   const { user, signOut, updateAccount, deleteAccount, refreshSessionFromStorage } = useAuth();
   const { bookings, orders, profile, saveProfile, favorites, notifications, notificationsUnreadCount } = useClientData();
   const isSyncflowBackend = runtimeConfig.integratedBackend === 'syncflow';
@@ -94,6 +95,32 @@ export default function ProfileScreen({
     return 'Новичок';
   }, [xpPoints]);
 
+  const profileBaseline = useMemo(
+    () => ({
+      firstName: String(profile?.firstName || user?.firstName || user?.name || '').trim(),
+      lastName: String(profile?.lastName || '').trim(),
+      birthDate: String(profile?.birthDate || '').trim(),
+      login: String(profile?.login || user?.login || '').trim(),
+      email: String(profile?.email || user?.email || '').trim(),
+      phoneNumber: String(
+        profile?.phoneNumber || profile?.phone || user?.phoneNumber || user?.phone || ''
+      ).trim(),
+    }),
+    [profile, user]
+  );
+
+  const isProfileDirty = useMemo(() => {
+    if (form.password.trim()) return true;
+    return (
+      form.firstName.trim() !== profileBaseline.firstName ||
+      form.lastName.trim() !== profileBaseline.lastName ||
+      form.birthDate.trim() !== profileBaseline.birthDate ||
+      form.login.trim() !== profileBaseline.login ||
+      form.email.trim() !== profileBaseline.email ||
+      form.phoneNumber.trim() !== profileBaseline.phoneNumber
+    );
+  }, [form, profileBaseline]);
+
   const onSaveProfile = useCallback(async () => {
     setSaveStatusIsError(false);
     if (form.birthDate && !isValidDateMask(form.birthDate)) {
@@ -152,19 +179,25 @@ export default function ProfileScreen({
   const ordersPreview = useMemo(() => orders.slice(0, 1), [orders]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, shadowsThemed.small, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <BrandHeaderAccent kicker="ВАШ КАБИНЕТ" />
-        <Text style={[styles.title, { color: colors.text }]}>Профиль</Text>
-      </View>
+    <ScreenBackdrop isDarkMode={isDarkMode}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTitles}>
+              <Text style={[styles.kicker, { color: colors.textMuted }]}>ВАШ КАБИНЕТ</Text>
+              <Text style={[styles.title, { color: colors.text }]}>Профиль</Text>
+            </View>
+            <ThemeToggle colors={colors} />
+          </View>
+        </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        nestedScrollEnabled
-      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          nestedScrollEnabled
+        >
         <ProfileHeaderCard colors={colors} shadowsThemed={shadowsThemed} fullName={fullName} role={profile?.role} />
 
         <ProfileStatsCard
@@ -267,11 +300,22 @@ export default function ProfileScreen({
             onChangeText={(value) => setForm((prev) => ({ ...prev, password: value }))}
           />
           <TouchableOpacity
-            style={[styles.saveButton, { backgroundColor: colors.primary, opacity: isSavingProfile ? 0.65 : 1 }]}
+            style={[
+              styles.saveButton,
+              {
+                backgroundColor: isProfileDirty && !isSavingProfile ? colors.primary : colors.textMuted,
+                opacity: isSavingProfile ? 0.65 : 1,
+              },
+            ]}
             onPress={onSaveProfile}
-            disabled={isSavingProfile}
+            disabled={!isProfileDirty || isSavingProfile}
           >
-            <Text style={[styles.saveButtonText, { color: colors.black }]}>
+            <Text
+              style={[
+                styles.saveButtonText,
+                { color: isProfileDirty && !isSavingProfile ? colors.black : colors.white },
+              ]}
+            >
               {isSavingProfile ? 'Сохранение…' : 'Сохранить изменения'}
             </Text>
           </TouchableOpacity>
@@ -331,14 +375,6 @@ export default function ProfileScreen({
           ))}
         </ProfileHistorySection>
         <TouchableOpacity
-          style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={toggleTheme}
-        >
-          <Text style={[styles.themeButtonText, { color: colors.text }]}>
-            Тема: {isDarkMode ? 'Темная' : 'Светлая'} (нажмите для смены)
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: colors.error }]}
           onPress={signOut}
         >
@@ -350,48 +386,59 @@ export default function ProfileScreen({
         >
           <Text style={[styles.deleteText, { color: colors.error }]}>Удалить аккаунт</Text>
         </TouchableOpacity>
-      </ScrollView>
-      <DeleteAccountModal
-        visible={isDeleteConfirmVisible}
-        colors={colors}
-        onDelete={onDeleteAccount}
-        onCancel={() => setDeleteConfirmVisible(false)}
-      />
-    </SafeAreaView>
+        </ScrollView>
+        <DeleteAccountModal
+          visible={isDeleteConfirmVisible}
+          colors={colors}
+          onDelete={onDeleteAccount}
+          onCancel={() => setDeleteConfirmVisible(false)}
+        />
+      </SafeAreaView>
+    </ScreenBackdrop>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   header: {
-    padding: spacing.lg,
+    paddingHorizontal: layout.screenPaddingX,
     paddingTop: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: spacing.sm,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  headerTitles: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  kicker: {
+    ...typography.kicker,
   },
   title: {
-    ...typography.h2,
+    ...typography.h1,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.6,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: spacing.lg,
-  },
-  themeButton: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-  },
-  themeButtonText: {
-    ...typography.body,
-    fontWeight: '500',
+    paddingHorizontal: layout.screenPaddingX,
+    paddingBottom: spacing['2xl'],
   },
   section: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
+    borderRadius: borderRadius['2xl'],
+    padding: spacing.lg,
     marginTop: spacing.md,
   },
   sectionTitle: {
@@ -400,14 +447,14 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.xl,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     marginBottom: spacing.sm,
     ...typography.body,
   },
   saveButton: {
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.pill,
     alignItems: 'center',
     paddingVertical: spacing.md,
     marginTop: spacing.xs,
@@ -430,13 +477,13 @@ const styles = StyleSheet.create({
   },
   bonusTxRow: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.xl,
     padding: spacing.sm,
     marginBottom: spacing.sm,
   },
   logoutButton: {
     marginTop: spacing.md,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.pill,
     alignItems: 'center',
     paddingVertical: spacing.md,
   },
@@ -446,7 +493,7 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     marginTop: spacing.sm,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.pill,
     alignItems: 'center',
     paddingVertical: spacing.md,
     borderWidth: 1,

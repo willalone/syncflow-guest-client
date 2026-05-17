@@ -1,32 +1,28 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Text, TouchableOpacity, View, StyleSheet, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Platform, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BRAND_LILAC, BRAND_LIME, getColors, getShadows, spacing, borderRadius, fontFamily } from '../constants/theme';
+import { getColors, getGlassTokens, getShadows, spacing, borderRadius, fontFamily } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import { getCartCount } from '../utils/cart';
 
 const tabs = [
-  { id: 'Menu', label: 'Меню', icon: 'restaurant-outline' },
-  { id: 'Cart', label: 'Корзина', icon: 'cart-outline' },
-  { id: 'Booking', label: 'Бронь', icon: 'calendar-outline' },
-  { id: 'Profile', label: 'Профиль', icon: 'person-outline' },
+  { id: 'Menu', label: 'Меню', icon: 'restaurant-outline', iconActive: 'restaurant' },
+  { id: 'Cart', label: 'Корзина', icon: 'bag-outline', iconActive: 'bag' },
+  { id: 'Booking', label: 'Бронь', icon: 'calendar-outline', iconActive: 'calendar' },
+  { id: 'Profile', label: 'Профиль', icon: 'person-outline', iconActive: 'person' },
 ];
 
-/** Полоска между иконкой и подписью: визуально по центру колонки иконки. */
-const INDICATOR_W = 34;
-const INDICATOR_H = 3;
-const BAR_PADDING_TOP = 10;
-const ICON_SLOT_H = 46;
-const INDICATOR_GAP_H = 14;
-const INDICATOR_TOP = BAR_PADDING_TOP + ICON_SLOT_H + (INDICATOR_GAP_H - INDICATOR_H) / 2;
+const BAR_PADDING_TOP = 12;
+const ICON_SLOT_H = 44;
 
 export default function TabBar({ currentScreen, onNavigate, cartItems }) {
   const { isDarkMode } = useTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const colors = getColors(isDarkMode);
+  const glass = getGlassTokens(isDarkMode);
   const shadowsThemed = getShadows(isDarkMode);
   const cartCount = getCartCount(cartItems);
   const isCompact = width < 380;
@@ -40,11 +36,12 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
   const didInit = useRef(false);
 
   const activeIndex = Math.max(0, tabs.findIndex((t) => t.id === currentScreen));
+  const dotSize = 5;
 
   useEffect(() => {
     if (tabsWidth <= 0) return;
     const segment = tabsWidth / tabs.length;
-    const target = activeIndex * segment + (segment - INDICATOR_W) / 2;
+    const target = activeIndex * segment + segment / 2 - dotSize / 2;
 
     if (!didInit.current) {
       slideX.setValue(target);
@@ -54,7 +51,7 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
 
     Animated.timing(slideX, {
       toValue: target,
-      duration: 210,
+      duration: 220,
       easing: Easing.bezier(0.22, 1, 0.36, 1),
       useNativeDriver: true,
     }).start();
@@ -74,14 +71,14 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
       scale.setValue(1);
       Animated.sequence([
         Animated.timing(scale, {
-          toValue: 1.05,
-          duration: 85,
+          toValue: 1.08,
+          duration: 90,
           easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(scale, {
           toValue: 1,
-          duration: 150,
+          duration: 140,
           easing: Easing.bezier(0.22, 1, 0.36, 1),
           useNativeDriver: true,
         }),
@@ -103,17 +100,26 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
     <View style={[styles.floatWrap, { paddingBottom: bottomPad }]}>
       <View
         style={[
-          styles.tabBar,
-          shadowsThemed.medium,
-          {
-            backgroundColor: colors.card,
-            borderColor: colors.hairline,
-          },
+          styles.tabBarShell,
+          shadowsThemed.glass,
+          isDarkMode ? shadowsThemed.glowSoft : null,
+          { borderColor: glass.border, borderRadius: borderRadius['2xl'] },
         ]}
       >
+        <BlurView
+          intensity={glass.blurIntensity}
+          tint={glass.blurTint}
+          experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+          style={[StyleSheet.absoluteFill, { borderRadius: borderRadius['2xl'], overflow: 'hidden' }]}
+        />
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: glass.fillStrong, borderRadius: borderRadius['2xl'] }]}
+        />
         <View style={styles.tabsRow} onLayout={onTabsLayout}>
           {tabs.map((tab) => {
             const active = currentScreen === tab.id;
+            const showBadge = tab.id === 'Cart' && cartCount > 0;
             return (
               <TouchableOpacity
                 key={tab.id}
@@ -124,27 +130,42 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
                 activeOpacity={0.85}
               >
                 <View style={styles.iconSlot}>
-                  <Animated.View style={{ transform: [{ scale: iconScaleMap[tab.id] || 1 }] }}>
+                  <Animated.View
+                    style={[
+                      { transform: [{ scale: iconScaleMap[tab.id] || 1 }] },
+                      active && isDarkMode ? shadowsThemed.glowLime : null,
+                    ]}
+                  >
                     <Ionicons
-                      name={tab.icon}
-                      size={isCompact ? 22 : 24}
-                      color={active ? colors.primaryDark : colors.textLight}
+                      name={active ? tab.iconActive : tab.icon}
+                      size={isCompact ? 23 : 25}
+                      color={active ? colors.primary : colors.textMuted}
                     />
                   </Animated.View>
+                  {showBadge ? (
+                    <View
+                      style={[
+                        styles.badge,
+                        { backgroundColor: colors.primary },
+                        isDarkMode ? shadowsThemed.glowLime : null,
+                      ]}
+                    >
+                      <Text style={[styles.badgeText, { color: colors.black }]}>{cartCount > 9 ? '9+' : cartCount}</Text>
+                    </View>
+                  ) : null}
                 </View>
-                <View style={styles.indicatorSpacer} />
                 <Text
                   style={[
                     styles.tabLabel,
                     {
-                      color: active ? colors.text : colors.textLight,
+                      color: active ? colors.text : colors.textMuted,
                       fontFamily: active ? fontFamily.sansBold : fontFamily.sansMedium,
                       fontSize: isCompact ? 10 : 11,
                     },
                   ]}
                   numberOfLines={1}
                 >
-                  {tab.id === 'Cart' && cartCount > 0 ? `${tab.label} · ${cartCount}` : tab.label}
+                  {tab.label}
                 </Text>
               </TouchableOpacity>
             );
@@ -154,21 +175,16 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
         <View style={styles.indicatorTrack} pointerEvents="none">
           <Animated.View
             style={[
-              styles.indicator,
+              styles.indicatorDot,
+              isDarkMode ? shadowsThemed.glowLime : null,
               {
-                width: INDICATOR_W,
-                height: INDICATOR_H,
+                width: dotSize,
+                height: dotSize,
+                backgroundColor: colors.primary,
                 transform: [{ translateX: slideX }],
               },
             ]}
-          >
-            <LinearGradient
-              colors={[BRAND_LILAC, BRAND_LIME]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={StyleSheet.absoluteFill}
-            />
-          </Animated.View>
+          />
         </View>
       </View>
     </View>
@@ -177,15 +193,14 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
 
 const styles = StyleSheet.create({
   floatWrap: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.xs,
   },
-  tabBar: {
+  tabBarShell: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius['2xl'],
     paddingTop: BAR_PADDING_TOP,
-    paddingBottom: 12,
-    paddingHorizontal: 2,
+    paddingBottom: 10,
+    paddingHorizontal: 4,
     overflow: 'hidden',
   },
   tabsRow: {
@@ -196,20 +211,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    top: INDICATOR_TOP,
-    height: INDICATOR_H,
+    top: BAR_PADDING_TOP + ICON_SLOT_H - 2,
+    height: 8,
   },
-  indicator: {
+  indicatorDot: {
     position: 'absolute',
     left: 0,
     top: 0,
-    borderRadius: 3,
-    overflow: 'hidden',
+    borderRadius: borderRadius.round,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
     minWidth: 0,
+    gap: 4,
   },
   iconSlot: {
     height: ICON_SLOT_H,
@@ -217,13 +232,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
-  indicatorSpacer: {
-    height: INDICATOR_GAP_H,
-    width: '100%',
+  badge: {
+    position: 'absolute',
+    right: '28%',
+    top: 6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontFamily: fontFamily.sansBold,
   },
   tabLabel: {
     textAlign: 'center',
     width: '100%',
-    marginTop: 2,
   },
 });

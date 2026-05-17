@@ -10,4 +10,8 @@ describe('runtimeConfig', () => {
   test('disables image proxy for syncflow backend', () => {
     expect(runtimeConfig.useBackendImageProxy).toBe(false);
   });
+
+  test('mock api only when explicitly enabled', () => {
+    expect(runtimeConfig.useMockApi).toBe(false);
+  });
 });

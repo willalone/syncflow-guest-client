@@ -7,12 +7,12 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BRAND_LILAC, BRAND_LIME, borderRadius, fontFamily, spacing, typography } from '../constants/theme';
+import { borderRadius, fontFamily, spacing, typography } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import DishImage from './DishImage';
+import GlassCard from './ui/GlassCard';
 
 const GAP = 14;
-const PAD = 1.5;
 const FEATURED_SIZE = 5;
 
 function hashString(value) {
@@ -35,7 +35,7 @@ const PagingDot = memo(function PagingDot({ index, scrollX, snap, activeColor })
     return {
       width: scrollX.interpolate({
         inputRange,
-        outputRange: [6, 20, 6],
+        outputRange: [6, 22, 6],
         extrapolate: 'clamp',
       }),
       opacity: scrollX.interpolate({
@@ -49,10 +49,11 @@ const PagingDot = memo(function PagingDot({ index, scrollX, snap, activeColor })
   return <Animated.View style={[styles.dot, style]} />;
 });
 
-export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish }) {
+export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish, shadows }) {
+  const { isDarkMode } = useTheme();
   const { width } = useWindowDimensions();
   const scrollX = useRef(new Animated.Value(0)).current;
-  const cardW = Math.min(292, Math.max(240, width * 0.74));
+  const cardW = Math.min(300, Math.max(248, width * 0.78));
   const snap = cardW + GAP;
   const sidePad = spacing.lg;
 
@@ -75,7 +76,7 @@ export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish
           maxPrice > minPrice && Number.isFinite(price)
             ? (price - minPrice) / (maxPrice - minPrice)
             : 0.5;
-        const affordability = 1 - priceNormalized; // cheaper = higher score
+        const affordability = 1 - priceNormalized;
         const qualityScore = hasRatingData
           ? rating * 0.72 + affordability * 5 * 0.28
           : affordability * 5;
@@ -102,12 +103,6 @@ export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.titleRow}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Сегодня рекомендуем</Text>
-        <Text style={[styles.sectionHint, { color: colors.textMuted }]}>
-          {featured.length > 1 ? 'свайп вбок' : 'подборка дня'}
-        </Text>
-      </View>
       <Animated.FlatList
         data={featured}
         horizontal
@@ -117,40 +112,32 @@ export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish
         snapToAlignment="start"
         disableIntervalMomentum
         nestedScrollEnabled
-        contentContainerStyle={{ paddingLeft: sidePad, paddingRight: sidePad + snap * 0.15 }}
+        contentContainerStyle={{ paddingLeft: sidePad, paddingRight: sidePad + snap * 0.12 }}
         ItemSeparatorComponent={() => <View style={{ width: GAP }} />}
         keyExtractor={(item) => item.id}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
           useNativeDriver: false,
         })}
-        scrollEventThrottle={1}
+        scrollEventThrottle={16}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            activeOpacity={0.93}
-            onPress={() => onOpenDish(item)}
-            style={{ width: cardW }}
-          >
-            <LinearGradient
-              colors={[BRAND_LILAC, BRAND_LIME]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.gradOuter, { borderRadius: borderRadius.xl + PAD }]}
-            >
-              <View style={[styles.card, { borderRadius: borderRadius.xl, backgroundColor: colors.card }]}>
-                <DishImage
-                  uri={item.imageUrl}
-                  title={item.title}
-                  style={styles.img}
-                  borderRadius={borderRadius.lg}
-                />
-                <View style={styles.caption}>
-                  <Text numberOfLines={2} style={[styles.name, { color: colors.text }]}>
-                    {item.title}
-                  </Text>
-                  <Text style={[styles.price, { color: colors.primaryDark }]}>{item.price} ₽</Text>
-                </View>
+          <TouchableOpacity activeOpacity={0.92} onPress={() => onOpenDish(item)} style={{ width: cardW }}>
+            <GlassCard mode="blur" shadows={shadows} radius={borderRadius['2xl']} padding={0} style={styles.cardShell}>
+              <DishImage
+                uri={item.imageUrl}
+                title={item.title}
+                style={styles.img}
+                borderRadius={borderRadius.xl}
+              />
+              <View style={styles.caption}>
+                <Text style={[styles.kicker, { color: colors.textMuted }]}>Рекомендуем</Text>
+                <Text numberOfLines={2} style={[styles.name, { color: colors.text }]}>
+                  {item.title}
+                </Text>
+                <Text style={[styles.price, { color: isDarkMode ? colors.primary : colors.primaryDark }]}>
+                  {item.price} ₽
+                </Text>
               </View>
-            </LinearGradient>
+            </GlassCard>
           </TouchableOpacity>
         )}
       />
@@ -165,29 +152,10 @@ export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
+    marginTop: spacing.xs,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    lineHeight: 24,
-    fontFamily: fontFamily.sans,
-    letterSpacing: -0.08,
-  },
-  sectionHint: {
-    ...typography.caption,
-    letterSpacing: 0.6,
-  },
-  gradOuter: {
-    padding: PAD,
-  },
-  card: {
+  cardShell: {
     overflow: 'hidden',
   },
   img: {
@@ -198,13 +166,20 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: 4,
   },
+  kicker: {
+    ...typography.kicker,
+    letterSpacing: 1,
+  },
   name: {
-    ...typography.body,
-    fontFamily: fontFamily.sans,
+    fontSize: 17,
+    lineHeight: 22,
+    fontFamily: fontFamily.sansSemibold,
+    letterSpacing: -0.15,
   },
   price: {
     ...typography.numeric,
     fontSize: 17,
+    marginTop: 2,
   },
   dots: {
     flexDirection: 'row',

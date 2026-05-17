@@ -22,11 +22,11 @@ export const getColors = (isDarkMode = false) => ({
   error: isDarkMode ? '#F0A0A8' : '#D86A72',
   info: isDarkMode ? '#B8A8E0' : '#9588C8',
 
-  background: isDarkMode ? '#1E1A24' : '#FAF7FC',
-  backgroundLight: isDarkMode ? '#28232F' : '#FFFFFF',
-  card: isDarkMode ? '#302A38' : '#FFFFFF',
-  cardElevated: isDarkMode ? '#383244' : '#F5F0FA',
-  overlay: isDarkMode ? 'rgba(12, 10, 16, 0.88)' : 'rgba(250, 247, 252, 0.92)',
+  background: isDarkMode ? '#121018' : '#FAF7FC',
+  backgroundLight: isDarkMode ? '#1E1A26' : '#FFFFFF',
+  card: isDarkMode ? '#2A2434' : '#FFFFFF',
+  cardElevated: isDarkMode ? '#322C3E' : '#F5F0FA',
+  overlay: isDarkMode ? 'rgba(8, 6, 12, 0.9)' : 'rgba(250, 247, 252, 0.92)',
 
   text: isDarkMode ? '#F5F0FA' : '#2A2434',
   textLight: isDarkMode ? '#D8CFE8' : '#5A5268',
@@ -42,6 +42,38 @@ export const getColors = (isDarkMode = false) => ({
   black: isDarkMode ? '#141018' : '#1E1824',
 });
 
+/** Токены «стекла» для карточек и панелей (без грязных градиентов). */
+export const getGlassTokens = (isDarkMode = false) => ({
+  blurTint: isDarkMode ? 'dark' : 'light',
+  blurIntensity: isDarkMode ? 38 : 52,
+  fill: isDarkMode ? 'rgba(42, 36, 54, 0.62)' : 'rgba(255, 255, 255, 0.58)',
+  fillStrong: isDarkMode ? 'rgba(48, 42, 62, 0.78)' : 'rgba(255, 255, 255, 0.78)',
+  border: isDarkMode ? 'rgba(226, 198, 251, 0.2)' : 'rgba(255, 255, 255, 0.75)',
+  borderSoft: isDarkMode ? 'rgba(226, 198, 251, 0.1)' : 'rgba(255, 255, 255, 0.45)',
+});
+
+/** Мягкое свечение для тёмной темы (благородные лиловые / лаймовые акценты). */
+export const getGlowTokens = (isDarkMode = false) => {
+  if (!isDarkMode) {
+    return {
+      enabled: false,
+      lilac: 'transparent',
+      lilacSoft: 'transparent',
+      lime: 'transparent',
+      limeSoft: 'transparent',
+      rim: 'transparent',
+    };
+  }
+  return {
+    enabled: true,
+    lilac: 'rgba(226, 198, 251, 0.55)',
+    lilacSoft: 'rgba(210, 180, 245, 0.14)',
+    lime: 'rgba(221, 234, 122, 0.62)',
+    limeSoft: 'rgba(196, 227, 90, 0.16)',
+    rim: 'rgba(236, 228, 255, 0.28)',
+  };
+};
+
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -52,16 +84,27 @@ export const spacing = {
 };
 
 export const borderRadius = {
-  sm: 6,
-  md: 10,
-  lg: 14,
-  xl: 18,
-  '2xl': 26,
+  sm: 8,
+  md: 14,
+  lg: 20,
+  xl: 24,
+  '2xl': 32,
+  sheet: 36,
   round: 50,
-  cardTL: 20,
-  cardTR: 12,
-  cardBR: 18,
-  cardBL: 12,
+  pill: 999,
+  cardTL: 24,
+  cardTR: 24,
+  cardBR: 24,
+  cardBL: 24,
+};
+
+/** Единые отступы карточек и высота pill-контролов (референсы food/coffee UI). */
+export const layout = {
+  cardPadding: 16,
+  screenPaddingX: 20,
+  chipHeight: 44,
+  searchHeight: 52,
+  fabSize: 44,
 };
 
 export const typography = {
@@ -169,6 +212,50 @@ export const getShadows = (isDarkMode = false) => {
       shadowRadius: 10,
       elevation: 4,
     },
+    glass: {
+      shadowColor: isDarkMode ? '#000000' : '#5A4868',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: isDarkMode ? 0.28 : 0.1,
+      shadowRadius: 20,
+      elevation: 5,
+    },
+    /** Тёмная тема: мягкое свечение вокруг карточек и акцентов. */
+    glowSoft: isDarkMode
+      ? {
+          shadowColor: '#C9A8E8',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.38,
+          shadowRadius: 14,
+          elevation: 4,
+        }
+      : {},
+    glowLilac: isDarkMode
+      ? {
+          shadowColor: '#DEC4F5',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.5,
+          shadowRadius: 16,
+          elevation: 6,
+        }
+      : {},
+    glowLime: isDarkMode
+      ? {
+          shadowColor: '#DDEA7A',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.55,
+          shadowRadius: 12,
+          elevation: 5,
+        }
+      : {},
+    glowAccent: isDarkMode
+      ? {
+          shadowColor: '#E2C6FB',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.42,
+          shadowRadius: 18,
+          elevation: 7,
+        }
+      : {},
   };
 };
 
@@ -178,8 +265,8 @@ export const shadows = getShadows(false);
 export const getScreenGradient = (isDarkMode = false) =>
   isDarkMode
     ? {
-        colors: ['#151218', '#221B2C', '#1A1620'],
-        locations: [0, 0.5, 1],
+        colors: ['#0C0A10', '#181420', '#221A2E', '#141018'],
+        locations: [0, 0.38, 0.72, 1],
         start: { x: 0, y: 0 },
         end: { x: 1, y: 1 },
       }

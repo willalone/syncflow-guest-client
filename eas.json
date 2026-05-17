@@ -1,15 +1,35 @@
 {
   "cli": {
-    "version": ">= 18.11.0"
+    "version": ">= 18.11.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_USE_MOCK_API": "false",
+        "EXPO_PUBLIC_INTEGRATED_BACKEND": "syncflow"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_USE_MOCK_API": "false",
+        "EXPO_PUBLIC_INTEGRATED_BACKEND": "syncflow",
+        "EXPO_PUBLIC_ALLOW_INSECURE_API": "true"
+      }
     },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_USE_MOCK_API": "false",
+        "EXPO_PUBLIC_INTEGRATED_BACKEND": "syncflow",
+        "EXPO_PUBLIC_ALLOW_INSECURE_API": "false"
+      }
+    }
+  },
+  "submit": {
     "production": {}
   }
 }

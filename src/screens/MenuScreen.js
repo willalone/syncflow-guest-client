@@ -1,17 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { FlatList, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BRAND_LILAC, BRAND_LIME, borderRadius, fontFamily, getColors, getShadows, spacing, typography } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { borderRadius, fontFamily, getColors, getGlassTokens, getShadows, layout, spacing, typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
-import BrandHeaderAccent from '../components/BrandHeaderAccent';
 import FeaturedDishesCarousel from '../components/FeaturedDishesCarousel';
 import MenuDishCard from '../components/MenuDishCard';
+import GlassCard from '../components/ui/GlassCard';
+import SectionHeader from '../components/ui/SectionHeader';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import StaggeredEnter from '../components/StaggeredEnter';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
-import { CLIENT_BRAND_KICKER } from '../constants/venue';
 import { isDishAvailableForVisit } from '../utils/menuAvailability';
 
 export default function MenuScreen({
@@ -27,6 +27,7 @@ export default function MenuScreen({
   const { isDarkMode } = useTheme();
   const { width } = useWindowDimensions();
   const colors = getColors(isDarkMode);
+  const glass = useMemo(() => getGlassTokens(isDarkMode), [isDarkMode]);
   const shadowsThemed = useMemo(() => getShadows(isDarkMode), [isDarkMode]);
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 180);
@@ -123,160 +124,193 @@ export default function MenuScreen({
     if (activeCategory !== 'Все') {
       return null;
     }
-    return <FeaturedDishesCarousel dishes={dishesForFeatured} colors={colors} onOpenDish={onOpenDish} />;
-  }, [activeCategory, dishesForFeatured, colors, onOpenDish]);
+    return (
+      <FeaturedDishesCarousel
+        dishes={dishesForFeatured}
+        colors={colors}
+        shadows={shadowsThemed}
+        onOpenDish={onOpenDish}
+      />
+    );
+  }, [activeCategory, dishesForFeatured, colors, shadowsThemed, onOpenDish]);
 
   return (
     <ScreenBackdrop isDarkMode={isDarkMode}>
-      <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
-      <View style={styles.header}>
-        <BrandHeaderAccent kicker={CLIENT_BRAND_KICKER} />
-        <View style={styles.titleRow}>
-          <View style={styles.titleBlock}>
-            <Text style={[styles.title, { color: colors.text }]}>Меню</Text>
-            <LinearGradient
-              colors={[BRAND_LILAC, BRAND_LIME]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.titleAccent}
-            />
-          </View>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={[styles.greeting, { color: colors.textMuted }]}>Добро пожаловать</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Меню</Text>
+
+          <GlassCard mode="blur" shadows={shadowsThemed} radius={borderRadius.pill} padding={0} style={styles.searchGlass}>
+            <View style={styles.searchInner}>
+              <Ionicons name="search-outline" size={20} color={colors.textMuted} style={styles.searchIcon} />
+              <TextInput
+                style={[styles.search, { color: colors.text }]}
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Поиск блюда"
+                placeholderTextColor={colors.textMuted}
+              />
+              {query.length > 0 ? (
+                <TouchableOpacity onPress={() => setQuery('')} hitSlop={10}>
+                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </GlassCard>
+
+          {preorderContext ? (
+            <Text style={[styles.preorderContextHint, { color: colors.textMuted }]}>
+              Предзаказ на {preorderContext.date} к {preorderContext.time}
+            </Text>
+          ) : null}
         </View>
-        <TextInput
-          style={[
-            styles.search,
-            { backgroundColor: colors.card, borderColor: colors.hairline, color: colors.text },
-          ]}
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Поиск блюда"
-          placeholderTextColor={colors.textMuted}
-        />
-        {preorderContext ? (
-          <Text style={[styles.preorderContextHint, { color: colors.textMuted }]}>
-            Предзаказ на {preorderContext.date} к {preorderContext.time}: показаны только доступные позиции.
-          </Text>
-        ) : null}
-      </View>
 
-      <View style={styles.categoriesRail}>
-        <FlatList
-          horizontal
-          data={displayedCategories}
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoriesList}
-          keyExtractor={(item) => item}
-          contentContainerStyle={styles.categories}
-          nestedScrollEnabled
-          keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => {
-            const active = activeCategory === item;
-            return (
-              <TouchableOpacity onPress={() => setActiveCategory(item)} activeOpacity={0.88} style={styles.categoryHit}>
-                <View
-                  style={[
-                    active ? styles.categoryActive : styles.categoryInactive,
-                    active
-                      ? { backgroundColor: colors.primary, borderColor: colors.primaryDark }
-                      : { borderColor: colors.hairline, backgroundColor: colors.card },
-                  ]}
-                >
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.categoryText, { color: active ? colors.black : colors.text }]}
+        <SectionHeader
+          title="Категории"
+          colors={colors}
+        />
+
+        <View style={styles.categoriesRail}>
+          <FlatList
+            horizontal
+            data={displayedCategories}
+            showsHorizontalScrollIndicator={false}
+            style={styles.categoriesList}
+            keyExtractor={(item) => item}
+            contentContainerStyle={styles.categories}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => {
+              const active = activeCategory === item;
+              return (
+                <TouchableOpacity onPress={() => setActiveCategory(item)} activeOpacity={0.88} style={styles.categoryHit}>
+                  <View
+                    style={[
+                      styles.categoryChip,
+                      active
+                        ? [
+                            { backgroundColor: colors.primary, borderColor: colors.primaryDark },
+                            isDarkMode ? shadowsThemed.glowLime : null,
+                          ]
+                        : { borderColor: glass.border, backgroundColor: glass.fill },
+                    ]}
                   >
-                    {item}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      </View>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.categoryText,
+                        { color: active ? colors.black : colors.text, fontFamily: active ? fontFamily.sansBold : fontFamily.sansMedium },
+                      ]}
+                    >
+                      {item}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
 
-      <FlatList
-        style={styles.menuScroll}
-        data={filteredDishes}
-        key={numColumns}
-        numColumns={numColumns}
-        keyExtractor={(item) => item.id}
-        ListHeaderComponent={renderMenuListHeader}
-        contentContainerStyle={[styles.list, { paddingBottom: spacing['2xl'] }]}
-        columnWrapperStyle={numColumns > 1 ? styles.columnWrap : undefined}
-        initialNumToRender={8}
-        windowSize={7}
-        maxToRenderPerBatch={8}
-        removeClippedSubviews={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        nestedScrollEnabled
-        renderItem={renderDish}
-      />
+        <SectionHeader
+          title={activeCategory === 'Все' ? 'Популярное' : activeCategory}
+          hint={`${filteredDishes.length} поз.`}
+          colors={colors}
+        />
+
+        <FlatList
+          style={styles.menuScroll}
+          data={filteredDishes}
+          key={numColumns}
+          numColumns={numColumns}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={renderMenuListHeader}
+          contentContainerStyle={[styles.list, { paddingBottom: spacing['2xl'] }]}
+          columnWrapperStyle={numColumns > 1 ? styles.columnWrap : undefined}
+          initialNumToRender={8}
+          windowSize={7}
+          maxToRenderPerBatch={8}
+          removeClippedSubviews={Platform.OS === 'android'}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          nestedScrollEnabled
+          renderItem={renderDish}
+        />
       </SafeAreaView>
     </ScreenBackdrop>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: 'transparent' },
   menuScroll: { flex: 1 },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
-  titleBlock: { flex: 1, minWidth: 0 },
-  title: {
-    ...typography.h2,
-    fontFamily: fontFamily.sans,
+  header: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
+    paddingBottom: spacing.xs,
   },
-  titleAccent: { width: 44, height: 3, borderRadius: 2, marginTop: spacing.sm },
-  search: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
+  greeting: {
+    ...typography.caption,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  title: {
+    ...typography.h1,
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.8,
+  },
+  searchGlass: {
+    minHeight: layout.searchHeight,
+  },
+  searchInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    minHeight: layout.searchHeight,
+  },
+  searchIcon: {
+    marginRight: spacing.sm,
+  },
+  search: {
+    flex: 1,
     ...typography.body,
+    paddingVertical: 0,
   },
   preorderContextHint: {
     ...typography.caption,
   },
   categoriesRail: {
-    height: 52,
+    height: layout.chipHeight + 8,
     justifyContent: 'center',
-    marginBottom: 2,
+    marginBottom: spacing.xs,
   },
   categoriesList: {
     flexGrow: 0,
   },
   categories: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 0,
+    paddingHorizontal: layout.screenPaddingX,
     gap: spacing.sm,
     alignItems: 'center',
   },
   categoryHit: { alignSelf: 'center' },
-  categoryActive: {
+  categoryChip: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.round,
-    paddingHorizontal: spacing.md,
-    height: 40,
-    maxHeight: 40,
-    justifyContent: 'center',
-  },
-  categoryInactive: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.round,
-    paddingHorizontal: spacing.md,
-    height: 40,
-    maxHeight: 40,
-    justifyContent: 'center',
-  },
-  categoryText: { ...typography.caption, fontFamily: fontFamily.sans },
-  list: {
+    borderRadius: borderRadius.pill,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: 0,
+    height: layout.chipHeight,
+    justifyContent: 'center',
+  },
+  categoryText: {
+    ...typography.body,
+    fontSize: 14,
+  },
+  list: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: 0,
   },
   columnWrap: {
     gap: spacing.sm,
-    marginBottom: 0,
   },
 });

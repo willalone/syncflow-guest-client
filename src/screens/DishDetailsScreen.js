@@ -1,17 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BRAND_LILAC, BRAND_LIME, borderRadius, getColors, getShadows, spacing, typography } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { borderRadius, getColors, getGlassTokens, getShadows, layout, spacing, typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import DishImage from '../components/DishImage';
-import GradientBorderCard from '../components/GradientBorderCard';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import GuestOrderHintCard from '../components/GuestOrderHintCard';
 import { runtimeConfig } from '../config/runtimeConfig';
 import * as clientApi from '../services/api/clientApi';
-
-const HERO_OUTER_R = borderRadius.xl + 2;
 
 export default function DishDetailsScreen({
   dish,
@@ -24,6 +21,7 @@ export default function DishDetailsScreen({
   const { isDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
   const colors = getColors(isDarkMode);
+  const glass = useMemo(() => getGlassTokens(isDarkMode), [isDarkMode]);
   const shadowsThemed = useMemo(() => getShadows(isDarkMode), [isDarkMode]);
   const [qty, setQty] = useState(1);
   const [ingredientsApi, setIngredientsApi] = useState(null);
@@ -116,11 +114,7 @@ export default function DishDetailsScreen({
           const id = String(m?.id ?? row?.id ?? '');
           const name = String(m?.ingredient?.name || 'Опция');
           const price = Number(m?.price || 0);
-          const weight =
-            m?.grossWeight != null && m?.unit?.name
-              ? `${m.grossWeight} ${m.unit.name}`
-              : '';
-          return { id, name, price, weight };
+          return { id, name, price };
         })
         .filter((item) => item.id),
     [modifiersApi]
@@ -131,127 +125,145 @@ export default function DishDetailsScreen({
     [modifiersPrepared, selectedModifiers]
   );
 
-  const selectedModifiersTotal = useMemo(
-    () => selectedModifiersList.reduce((sum, item) => sum + Number(item?.price || 0), 0),
-    [selectedModifiersList]
-  );
+  const lineTotal = useMemo(() => {
+    const mods = selectedModifiersList.reduce((sum, item) => sum + Number(item?.price || 0), 0);
+    return (Number(dish.price || 0) + mods) * qty;
+  }, [dish.price, selectedModifiersList, qty]);
 
   return (
     <ScreenBackdrop isDarkMode={isDarkMode} style={styles.backdrop}>
-      <SafeAreaView style={styles.safeTop} edges={['top']}>
-        <View style={styles.flex}>
+      <View style={styles.flex}>
+        <View style={styles.hero}>
+          <DishImage uri={dish.imageUrl} title={dish.title} style={styles.heroImage} borderRadius={0} />
+          <View style={[styles.heroFade, { backgroundColor: isDarkMode ? 'rgba(20,16,24,0.35)' : 'rgba(250,247,252,0.15)' }]} />
+          <SafeAreaView edges={['top']} style={styles.heroTopBar}>
+            <TouchableOpacity
+              onPress={onBack}
+              style={[styles.iconBtn, { backgroundColor: glass.fillStrong, borderColor: glass.border, borderWidth: StyleSheet.hairlineWidth }]}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
+            </TouchableOpacity>
+          </SafeAreaView>
+        </View>
+
+        <View
+          style={[
+            styles.sheet,
+            shadowsThemed.glass,
+            {
+              backgroundColor: glass.fillStrong,
+              borderColor: glass.border,
+              borderWidth: StyleSheet.hairlineWidth,
+              paddingBottom: canOrder ? 0 : Math.max(insets.bottom, spacing.md),
+            },
+          ]}
+        >
           <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator
+            showsVerticalScrollIndicator={false}
           >
-            <TouchableOpacity onPress={onBack} style={styles.back} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
-              <Text style={[styles.backText, { color: colors.text }]}>← Назад</Text>
-            </TouchableOpacity>
-
-            <View style={[styles.heroShell, shadowsThemed.float, { borderRadius: HERO_OUTER_R }]}>
-              <GradientBorderCard colors={colors} innerStyle={styles.heroInner}>
-                <DishImage uri={dish.imageUrl} title={dish.title} style={styles.image} borderRadius={0} />
-              </GradientBorderCard>
-            </View>
-
-            <View style={styles.body}>
-              <Text style={[styles.name, { color: colors.text }]}>{dish.title}</Text>
-              <LinearGradient
-                colors={[BRAND_LILAC, BRAND_LIME]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.titleAccent}
-              />
-              <Text style={[styles.price, { color: colors.primaryDark || colors.primary }]}>
-                {dish.price} руб.
-              </Text>
-              <Text style={[styles.label, { color: colors.textLight }]}>Описание</Text>
-              <Text style={[styles.text, { color: colors.text }]}>{dish.description}</Text>
-              <Text style={[styles.label, { color: colors.textLight }]}>Состав</Text>
-              {extrasLoading ? (
-                <View style={styles.extrasLoading}>
-                  <ActivityIndicator color={colors.primary} />
-                  <Text style={[styles.extrasHint, { color: colors.textMuted }]}>Загружаем состав…</Text>
+            <Text style={[styles.name, { color: colors.text }]}>{dish.title}</Text>
+            <View style={styles.metaRow}>
+              {dish.rating != null ? (
+                <View style={styles.metaChip}>
+                  <Ionicons name="star" size={14} color={colors.warning} />
+                  <Text style={[styles.metaText, { color: colors.textLight }]}>{dish.rating}</Text>
                 </View>
-              ) : (
-                <Text style={[styles.text, { color: colors.text }]}>{ingredientsText}</Text>
-              )}
-              {canOrder && modifiersApi && modifiersApi.length ? (
-                <>
-                  <Text style={[styles.label, { color: colors.textLight }]}>Дополнительно</Text>
-                  <View style={{ gap: spacing.xs }}>
-                    {modifiersApi.map((row) => {
-                      const m = row?.modificator;
-                      const modifierId = String(m?.id ?? row?.id ?? '');
-                      const selected = Boolean(selectedModifiers[modifierId]);
-                      const name = m?.ingredient?.name || 'Опция';
-                      const price = m?.price != null ? `${m.price} руб.` : '';
-                      const w = m?.grossWeight != null && m?.unit?.name ? ` · ${m.grossWeight} ${m.unit.name}` : '';
-                      return (
-                        <TouchableOpacity
-                          key={row.id ?? `${name}-${price}`}
-                          activeOpacity={0.86}
-                          onPress={() => {
-                            if (!modifierId) return;
-                            setSelectedModifiers((prev) => ({
-                              ...prev,
-                              [modifierId]: !prev[modifierId],
-                            }));
-                          }}
-                          style={[styles.modRow, { borderColor: colors.hairline, backgroundColor: colors.cardElevated }]}
-                        >
-                          <Text style={[styles.text, { color: colors.text, flex: 1 }]}>
-                            {name}
-                            {w}
-                          </Text>
-                          {price ? <Text style={[styles.modPrice, { color: colors.primaryDark || colors.primary }]}>{price}</Text> : null}
-                          <View
-                            style={[
-                              styles.modToggle,
-                              {
-                                borderColor: selected ? colors.primary : colors.hairline,
-                                backgroundColor: selected ? colors.primary : 'transparent',
-                              },
-                            ]}
-                          >
-                            {selected ? <Text style={[styles.modToggleText, { color: colors.black }]}>✓</Text> : null}
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </>
               ) : null}
-              {recommended.length ? (
-                <>
-                  <Text style={[styles.label, { color: colors.textLight }]}>Рекомендуем к этому блюду</Text>
-                  <View style={styles.recoRow}>
-                    {recommended.map((item) => (
-                      <View
-                        key={item.id}
-                        style={[styles.recoChip, { borderColor: colors.hairline, backgroundColor: colors.cardElevated }]}
-                      >
-                        <Text style={[styles.recoTitle, { color: colors.text }]}>{item.title}</Text>
-                        <Text style={[styles.recoPrice, { color: colors.primaryDark || colors.primary }]}>{item.price} руб.</Text>
-                        {canOrder ? (
-                          <TouchableOpacity
-                            onPress={() => onAddToCart(item.id, 1)}
-                            style={[styles.recoAddBtn, { backgroundColor: colors.primary }]}
-                          >
-                            <Text style={[styles.recoAddText, { color: colors.black }]}>Добавить</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-                    ))}
-                  </View>
-                </>
-              ) : null}
-              {!canOrder ? (
-                <GuestOrderHintCard colors={colors} onOpenAuth={onOpenAuth} />
+              {dish.weight ? (
+                <Text style={[styles.metaText, { color: colors.textMuted }]}>{dish.weight}</Text>
               ) : null}
             </View>
+            <Text style={[styles.price, { color: colors.primaryDark }]}>{dish.price} ₽</Text>
+
+            <Text style={[styles.sectionLabel, { color: colors.text }]}>Описание</Text>
+            <Text style={[styles.body, { color: colors.textLight }]}>{dish.description}</Text>
+
+            <Text style={[styles.sectionLabel, { color: colors.text }]}>Состав</Text>
+            {extrasLoading ? (
+              <View style={styles.extrasLoading}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={[styles.extrasHint, { color: colors.textMuted }]}>Загружаем состав…</Text>
+              </View>
+            ) : (
+              <Text style={[styles.body, { color: colors.textLight }]}>{ingredientsText}</Text>
+            )}
+
+            {canOrder && modifiersApi && modifiersApi.length ? (
+              <>
+                <Text style={[styles.sectionLabel, { color: colors.text }]}>Дополнительно</Text>
+                <View style={styles.modGrid}>
+                  {modifiersApi.map((row) => {
+                    const m = row?.modificator;
+                    const modifierId = String(m?.id ?? row?.id ?? '');
+                    const selected = Boolean(selectedModifiers[modifierId]);
+                    const name = m?.ingredient?.name || 'Опция';
+                    const price = m?.price != null ? `+${m.price} ₽` : '';
+                    return (
+                      <TouchableOpacity
+                        key={row.id ?? `${name}-${price}`}
+                        activeOpacity={0.86}
+                        onPress={() => {
+                          if (!modifierId) return;
+                          setSelectedModifiers((prev) => ({
+                            ...prev,
+                            [modifierId]: !prev[modifierId],
+                          }));
+                        }}
+                        style={[
+                          styles.modChip,
+                          {
+                            borderColor: selected ? colors.primary : colors.hairline,
+                            backgroundColor: selected ? colors.primary : colors.cardElevated,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.modChipText, { color: selected ? colors.black : colors.text }]}>
+                          {name}
+                        </Text>
+                        {price ? (
+                          <Text style={[styles.modChipPrice, { color: selected ? colors.black : colors.textMuted }]}>
+                            {price}
+                          </Text>
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
+
+            {recommended.length ? (
+              <>
+                <Text style={[styles.sectionLabel, { color: colors.text }]}>С этим заказывают</Text>
+                <View style={styles.recoRow}>
+                  {recommended.map((item) => (
+                    <View
+                      key={item.id}
+                      style={[styles.recoCard, { backgroundColor: colors.cardElevated, borderColor: colors.hairline }]}
+                    >
+                      <Text numberOfLines={2} style={[styles.recoTitle, { color: colors.text }]}>
+                        {item.title}
+                      </Text>
+                      <Text style={[styles.recoPrice, { color: colors.primaryDark }]}>{item.price} ₽</Text>
+                      {canOrder ? (
+                        <TouchableOpacity
+                          onPress={() => onAddToCart(item.id, 1)}
+                          style={[styles.recoAddBtn, { backgroundColor: colors.primary }]}
+                        >
+                          <Ionicons name="add" size={18} color={colors.black} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              </>
+            ) : null}
+
+            {!canOrder ? <GuestOrderHintCard colors={colors} onOpenAuth={onOpenAuth} /> : null}
           </ScrollView>
 
           {canOrder ? (
@@ -259,80 +271,171 @@ export default function DishDetailsScreen({
               style={[
                 styles.bottom,
                 {
-                  backgroundColor: colors.card,
                   borderTopColor: colors.hairline,
                   paddingBottom: Math.max(insets.bottom, spacing.md),
                 },
               ]}
             >
-              <View style={[styles.qty, { borderColor: colors.hairline }]}>
-                <TouchableOpacity onPress={() => setQty((value) => Math.max(1, value - 1))}>
+              <View style={[styles.qty, { backgroundColor: colors.cardElevated, borderColor: colors.hairline }]}>
+                <TouchableOpacity onPress={() => setQty((value) => Math.max(1, value - 1))} hitSlop={8}>
                   <Text style={[styles.qtyButton, { color: colors.text }]}>−</Text>
                 </TouchableOpacity>
                 <Text style={[styles.qtyValue, { color: colors.text }]}>{qty}</Text>
-                <TouchableOpacity onPress={() => setQty((value) => value + 1)}>
+                <TouchableOpacity onPress={() => setQty((value) => value + 1)} hitSlop={8}>
                   <Text style={[styles.qtyButton, { color: colors.text }]}>＋</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
                 onPress={() => onAddToCart(dish.id, qty, { modifiers: selectedModifiersList })}
-                style={[styles.addButton, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.addButton,
+                  { backgroundColor: colors.primary },
+                  isDarkMode ? shadowsThemed.glowLime : null,
+                ]}
               >
-                <Text style={[styles.addText, { color: colors.black }]}>Добавить в корзину</Text>
+                <Text style={[styles.addText, { color: colors.black }]}>В корзину</Text>
+                <Text style={[styles.addPrice, { color: colors.black }]}>{lineTotal.toFixed(0)} ₽</Text>
               </TouchableOpacity>
             </View>
           ) : null}
         </View>
-      </SafeAreaView>
+      </View>
     </ScreenBackdrop>
   );
 }
 
+const HERO_H = 280;
+
 const styles = StyleSheet.create({
   backdrop: { flex: 1 },
-  safeTop: { flex: 1, backgroundColor: 'transparent' },
   flex: { flex: 1 },
-  scroll: { flex: 1 },
-  scrollContent: {
-    paddingBottom: spacing.lg,
+  hero: {
+    height: HERO_H,
+    width: '100%',
+    backgroundColor: '#1E1824',
   },
-  back: { paddingTop: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
-  backText: { ...typography.body, fontWeight: '600' },
-  heroShell: {
-    marginHorizontal: spacing.lg,
-    borderRadius: HERO_OUTER_R,
+  heroImage: {
+    width: '100%',
+    height: '100%',
   },
-  heroInner: {
-    height: 220,
+  heroFade: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  heroTopBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.xs,
+  },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  image: { width: '100%', height: '100%', borderRadius: 0 },
-  body: { padding: spacing.lg, gap: spacing.sm },
-  name: { ...typography.h2, letterSpacing: -0.5 },
-  titleAccent: {
-    width: 48,
-    height: 3,
-    borderRadius: 2,
-    marginTop: -4,
+  sheet: {
+    flex: 1,
+    marginTop: -borderRadius.sheet,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
+    overflow: 'hidden',
+  },
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  name: {
+    ...typography.h2,
+    letterSpacing: -0.5,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+  },
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
+    ...typography.caption,
+  },
+  price: {
+    ...typography.numeric,
+    fontSize: 24,
+    lineHeight: 30,
+    marginBottom: spacing.sm,
+  },
+  sectionLabel: {
+    ...typography.h4,
+    marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
-  price: { ...typography.numeric, fontSize: 22, lineHeight: 28 },
-  label: { ...typography.caption, fontWeight: '600', marginTop: spacing.xs, letterSpacing: 0.8 },
-  text: { ...typography.body },
-  recoRow: { gap: spacing.xs },
-  recoChip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius.md, padding: spacing.sm },
-  recoTitle: { ...typography.caption, fontWeight: '700' },
-  recoPrice: { ...typography.caption, marginTop: 2 },
-  recoAddBtn: {
-    marginTop: spacing.xs,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    paddingVertical: 6,
+  body: {
+    ...typography.body,
+    lineHeight: 22,
   },
-  recoAddText: { ...typography.caption, fontWeight: '700' },
+  modGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  modChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: 2,
+  },
+  modChipText: {
+    ...typography.caption,
+    fontWeight: '600',
+  },
+  modChipPrice: {
+    ...typography.caption,
+    fontSize: 11,
+  },
+  recoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  recoCard: {
+    width: '47%',
+    minWidth: 140,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  recoTitle: {
+    ...typography.caption,
+    fontWeight: '700',
+    minHeight: 32,
+  },
+  recoPrice: {
+    ...typography.numeric,
+    fontSize: 15,
+  },
+  recoAddBtn: {
+    alignSelf: 'flex-start',
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.round,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xs,
+  },
   bottom: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.screenPaddingX,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
@@ -341,7 +444,7 @@ const styles = StyleSheet.create({
   },
   qty: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
@@ -349,32 +452,18 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   qtyButton: { fontSize: 22, fontWeight: '700' },
-  qtyValue: { ...typography.bodyLarge, fontWeight: '700' },
+  qtyValue: { ...typography.bodyLarge, fontWeight: '700', minWidth: 24, textAlign: 'center' },
   addButton: {
     flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-  },
-  addText: { ...typography.button, fontWeight: '700' },
-  extrasLoading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginVertical: spacing.xs },
-  extrasHint: { ...typography.caption },
-  modRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.pill,
   },
-  modPrice: { ...typography.caption, fontWeight: '700' },
-  modToggle: {
-    width: 22,
-    height: 22,
-    borderRadius: borderRadius.round,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
-  },
-  modToggleText: { ...typography.caption, fontWeight: '700' },
+  addText: { ...typography.button, fontWeight: '700' },
+  addPrice: { ...typography.numeric, fontSize: 16 },
+  extrasLoading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  extrasHint: { ...typography.caption },
 });

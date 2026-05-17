@@ -64,7 +64,7 @@ export default function ProfileStatsCard({
 
 const styles = StyleSheet.create({
   statsCard: {
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius['2xl'],
     padding: spacing.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },

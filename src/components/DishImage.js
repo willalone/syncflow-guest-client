@@ -8,7 +8,7 @@ import { getColors } from '../constants/theme';
 /**
  * expo-image стабильнее тянет https с CDN (Unsplash) в Expo Go / новых RN, чем Image из react-native.
  */
-export default function DishImage({ uri, title, style, borderRadius = 12 }) {
+export default function DishImage({ uri, title, style, borderRadius = 12, contentFit = 'cover' }) {
   const { isDarkMode } = useTheme();
   const colors = getColors(isDarkMode);
   const trimmed = String(uri || '').trim();
@@ -38,7 +38,7 @@ export default function DishImage({ uri, title, style, borderRadius = 12 }) {
           source={{ uri: trimmed }}
           recyclingKey={trimmed}
           style={[StyleSheet.absoluteFillObject, { borderRadius }]}
-          contentFit="cover"
+          contentFit={contentFit}
           cachePolicy="memory-disk"
           transition={0}
           onError={() => setFailed(true)}

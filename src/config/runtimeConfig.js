@@ -12,12 +12,19 @@ const restaurantId =
     : null;
 
 export const runtimeConfig = {
-  useMockApi: extra.useMockApi !== false,
-  apiBaseUrl: extra.apiBaseUrl || 'http://127.0.0.1:3000/api',
+  /** Mock только при явном useMockApi: true (безопасно для production по умолчанию). */
+  useMockApi: extra.useMockApi === true,
+  apiBaseUrl: String(extra.apiBaseUrl || 'http://127.0.0.1:3000/api').trim(),
   integratedBackend,
   restaurantId,
   enablePremiumTabGestures: extra.enablePremiumTabGestures === true,
   appOwnership: Constants?.appOwnership || 'unknown',
+  buildProfile: String(extra.buildProfile || 'development'),
+  /** EAS production profile — включает жёсткие проверки конфигурации. */
+  enableProductionChecks: extra.enableProductionChecks === true,
+  /** Staging с HTTP/IP: только если явно разрешено (не для store release). */
+  allowInsecureApi: extra.allowInsecureApi === true,
   /** Прокси картинок /api/media/proxy есть только на локальном сервере проекта. */
   useBackendImageProxy: integratedBackend !== 'syncflow' && extra.useBackendImageProxy !== false,
+  isReleaseBuild: !__DEV__,
 };

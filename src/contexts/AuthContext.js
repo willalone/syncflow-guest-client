@@ -5,6 +5,7 @@ import * as clientApi from '../services/api/clientApi';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { hydrateStoredGuestSession } from '../services/guestSession';
 import { readAuthSession, subscribeAuthSession, writeAuthSession } from '../services/authSessionStorage';
+import { resetProfileFetchCoalescing } from '../services/api/syncflowClient/profile';
 
 const AuthContext = createContext();
 
@@ -35,7 +36,12 @@ export function AuthProvider({ children }) {
     let cancelled = false;
     async function restore() {
       try {
-        const stored = await hydrateStoredGuestSession();
+        const stored = await Promise.race([
+          hydrateStoredGuestSession(),
+          new Promise((resolve) => {
+            setTimeout(() => resolve(null), 15000);
+          }),
+        ]);
         if (!cancelled && stored) {
           setSession(normalizeSession(stored));
         }
@@ -60,10 +66,21 @@ export function AuthProvider({ children }) {
 
   /** После refresh в syncflowHttp сессия в памяти совпадает с AsyncStorage. */
   useEffect(() => {
+    let lastSessionKey = null;
     return subscribeAuthSession((stored) => {
-      if (stored) {
-        setSession(normalizeSession(stored));
-      }
+      if (!stored) return;
+      const key = [
+        stored.accessToken || stored.token || '',
+        stored.refreshToken || '',
+        stored.user?.id || '',
+        stored.user?.email || '',
+        stored.user?.firstName || '',
+        stored.user?.lastName || '',
+        stored.pushDeviceToken || stored.user?.pushDeviceToken || '',
+      ].join('|');
+      if (key === lastSessionKey) return;
+      lastSessionKey = key;
+      setSession(normalizeSession(stored));
     });
   }, []);
 
@@ -116,6 +133,7 @@ export function AuthProvider({ children }) {
       // no-op: logout must continue even if token cleanup failed
     }
     setSession(null);
+    resetProfileFetchCoalescing();
     await writeAuthSession(null);
   };
 

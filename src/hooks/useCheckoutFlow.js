@@ -12,6 +12,8 @@ function preorderNoteFromDetailedItem(row) {
     .join(', ');
 }
 
+const OFFLINE_CHECKOUT_MSG = 'Нет соединения с интернетом. Дождитесь восстановления сети и повторите.';
+
 export function useCheckoutFlow({
   cartItems,
   menuDishes,
@@ -22,6 +24,7 @@ export function useCheckoutFlow({
   payOrder,
   showToast,
   navigateToScreen,
+  isOffline = false,
 }) {
   const [checkoutOptions, setCheckoutOptions] = React.useState(null);
   const [paymentPrompt, setPaymentPrompt] = React.useState({ visible: false, orderId: null, summary: null });
@@ -58,6 +61,11 @@ export function useCheckoutFlow({
       setCheckoutOptions(options);
       if (options.orderType === 'booking') {
         navigateToScreen('Booking');
+        return;
+      }
+
+      if (isOffline) {
+        showToast('error', OFFLINE_CHECKOUT_MSG);
         return;
       }
 
@@ -148,11 +156,15 @@ export function useCheckoutFlow({
         showToast('error', error?.message || 'Не удалось оформить заказ. Проверьте данные и повторите попытку.');
       }
     },
-    [buildDetailedItems, cartItems, menuDishes, createOrder, spendGuestBonus, showToast, clearCart, navigateToScreen]
+    [buildDetailedItems, cartItems, menuDishes, createOrder, spendGuestBonus, showToast, clearCart, navigateToScreen, isOffline]
   );
 
   const onBookingSubmit = React.useCallback(
     async (payload) => {
+      if (isOffline) {
+        showToast('error', OFFLINE_CHECKOUT_MSG);
+        return { ok: false, message: OFFLINE_CHECKOUT_MSG };
+      }
       try {
         const total = calculateCartTotal(cartItems, menuDishes);
         const detailedItems = buildDetailedItems();
@@ -229,11 +241,15 @@ export function useCheckoutFlow({
         return { ok: false, message };
       }
     },
-    [buildDetailedItems, cartItems, menuDishes, createBooking, navigateToScreen, showToast, clearCart, createOrder, checkoutOptions]
+    [buildDetailedItems, cartItems, menuDishes, createBooking, navigateToScreen, showToast, clearCart, createOrder, checkoutOptions, isOffline]
   );
 
   const handlePayNow = React.useCallback(async () => {
     if (!paymentPrompt.orderId) return;
+    if (isOffline) {
+      showToast('error', OFFLINE_CHECKOUT_MSG);
+      return;
+    }
     try {
       await payOrder(paymentPrompt.orderId);
       setPaymentPrompt({ visible: false, orderId: null, summary: null });
@@ -242,7 +258,7 @@ export function useCheckoutFlow({
     } catch (error) {
       showToast('error', error?.message || 'Не удалось провести оплату. Повторите попытку.');
     }
-  }, [paymentPrompt.orderId, payOrder, navigateToScreen, showToast]);
+  }, [paymentPrompt.orderId, payOrder, navigateToScreen, showToast, isOffline]);
 
   const handlePayLater = React.useCallback(() => {
     setPaymentPrompt({ visible: false, orderId: null, summary: null });

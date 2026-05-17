@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { borderRadius, getColors, spacing, typography } from '../constants/theme';
+import { borderRadius, getColors, getShadows, layout, spacing, typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
+import ScreenBackdrop from '../components/ScreenBackdrop';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function OrdersHistoryScreen({
   orders = [],
@@ -16,6 +18,7 @@ export default function OrdersHistoryScreen({
 }) {
   const { isDarkMode } = useTheme();
   const colors = getColors(isDarkMode);
+  const shadows = getShadows(isDarkMode);
   const [reviewState, setReviewState] = useState({});
 
   const setReviewValue = (orderId, key, value) => {
@@ -23,13 +26,14 @@ export default function OrdersHistoryScreen({
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} style={styles.back}>
-          <Text style={[styles.backText, { color: colors.text }]}>← Назад</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Все заказы</Text>
-      </View>
+    <ScreenBackdrop isDarkMode={isDarkMode}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={onBack} style={[styles.backBtn, { backgroundColor: colors.card }]}>
+            <Ionicons name="chevron-back" size={22} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.text }]}>Заказы</Text>
+        </View>
       <FlatList
         data={orders}
         keyExtractor={(item) => item.id}
@@ -56,7 +60,7 @@ export default function OrdersHistoryScreen({
           ) : null
         }
         renderItem={({ item }) => (
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.card, shadows.float, { backgroundColor: colors.card, borderColor: colors.hairline }]}>
             <View style={styles.titleRow}>
               <Text style={[styles.cardTitle, { color: colors.text }]}>Сумма: {item.total} руб.</Text>
               <View
@@ -154,18 +158,36 @@ export default function OrdersHistoryScreen({
           </View>
         )}
       />
-    </SafeAreaView>
+      </SafeAreaView>
+    </ScreenBackdrop>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm },
-  back: { alignSelf: 'flex-start' },
-  backText: { ...typography.body, fontWeight: '600' },
-  title: { ...typography.h2 },
-  list: { padding: spacing.lg, gap: spacing.sm },
-  card: { borderWidth: 1, borderRadius: borderRadius.lg, padding: spacing.md, marginBottom: spacing.sm },
+  container: { flex: 1, backgroundColor: 'transparent' },
+  header: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.round,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: { ...typography.h2, flex: 1, letterSpacing: -0.4 },
+  list: { paddingHorizontal: layout.screenPaddingX, paddingBottom: spacing['2xl'], gap: spacing.sm },
+  card: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius['2xl'],
+    padding: spacing.lg,
+    marginBottom: spacing.sm,
+  },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   cardTitle: { ...typography.body, fontWeight: '700', marginBottom: spacing.xs },
   cardText: { ...typography.caption },
@@ -179,22 +201,22 @@ const styles = StyleSheet.create({
   statusBadgeText: { ...typography.caption, fontWeight: '700' },
   actionBtn: {
     marginTop: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.pill,
     paddingVertical: spacing.sm,
     alignItems: 'center',
   },
   actionText: { ...typography.caption, fontWeight: '700' },
   reviewWrap: { marginTop: spacing.sm, gap: spacing.xs },
   input: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.xl,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     ...typography.caption,
   },
   loadMoreBtn: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.pill,
     alignItems: 'center',
     paddingVertical: spacing.sm,
     marginTop: spacing.xs,

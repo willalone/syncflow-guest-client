@@ -35,8 +35,9 @@ export function useClientDataBootstrap({
 }) {
   useEffect(() => {
     let cancelled = false;
+    let bootstrapId = 0;
 
-    async function bootstrap() {
+    async function bootstrap(runId) {
       setIsBootstrapping(true);
       try {
         if (isAuthenticated && !runtimeConfig.useMockApi) {
@@ -84,7 +85,7 @@ export function useClientDataBootstrap({
           }
         }
 
-        if (!cancelled) setIsBootstrapping(false);
+        if (!cancelled && runId === bootstrapId) setIsBootstrapping(false);
 
         const publicRefreshTasks = [
           (async () => {
@@ -144,7 +145,10 @@ export function useClientDataBootstrap({
           const [bookingsRes, ordersRes, profileRes, favoritesRes, notificationsRes] = settled;
           const bookingData = bookingsRes.status === 'fulfilled' && Array.isArray(bookingsRes.value) ? bookingsRes.value : [];
           const ordersData = ordersRes.status === 'fulfilled' && Array.isArray(ordersRes.value) ? ordersRes.value : [];
-          const profileData = profileRes.status === 'fulfilled' && profileRes.value ? profileRes.value : null;
+          const profileData =
+            profileRes.status === 'fulfilled' && profileRes.value
+              ? profileRes.value
+              : cachedUserScope?.data?.profile ?? null;
           const favoritesData = favoritesRes.status === 'fulfilled' && Array.isArray(favoritesRes.value) ? favoritesRes.value : [];
           const notificationsData = notificationsRes.status === 'fulfilled' && Array.isArray(notificationsRes.value) ? notificationsRes.value : [];
 
@@ -179,10 +183,13 @@ export function useClientDataBootstrap({
           });
         }
       } finally {
-        if (!cancelled) setIsBootstrapping(false);
+        // Всегда снимаем оверлей для актуального запуска (иначе при смене userId касания блокируются навсегда).
+        if (runId === bootstrapId) setIsBootstrapping(false);
       }
     }
-    bootstrap();
+    bootstrapId += 1;
+    const runId = bootstrapId;
+    bootstrap(runId);
     return () => {
       cancelled = true;
     };

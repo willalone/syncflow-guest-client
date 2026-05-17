@@ -48,6 +48,7 @@
       "integratedBackend": "syncflow",
       "restaurantId": "restaurant1",
       "apiBaseUrl": "http://186.246.5.94/api",
+      "allowInsecureApi": true,
       "enablePremiumTabGestures": false,
       "eas": {
         "projectId": "0b66b85a-bf8a-4a81-94d5-7367569a1e9c"
@@ -56,7 +57,8 @@
     "plugins": [
       "expo-font",
       "expo-video",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-secure-store"
     ]
   }
 }

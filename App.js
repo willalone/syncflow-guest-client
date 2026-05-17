@@ -1,14 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, StatusBar as RNStatusBar, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
+import AppErrorBoundary from './src/components/AppErrorBoundary';
+import ProductionConfigGate from './src/components/ProductionConfigGate';
+import { getProductionConfigIssues } from './src/config/validateProductionConfig';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { ClientDataProvider } from './src/contexts/ClientDataContext';
+import { NetworkProvider } from './src/contexts/NetworkContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { BRAND_LILAC, BRAND_LIME } from './src/constants/theme';
+import { logger } from './src/utils/logger';
 
 function ThemedRoot() {
   const { isDarkMode } = useTheme();
@@ -21,16 +26,38 @@ function ThemedRoot() {
 }
 
 function AppBootstrapped() {
+  useEffect(() => {
+    const configIssues = getProductionConfigIssues();
+    if (configIssues.length) {
+      logger.warn('[config] production checks:', configIssues.join(' | '));
+    }
+
+    const prev = global.onunhandledrejection;
+    global.onunhandledrejection = (event) => {
+      logger.warn('[unhandledrejection]', event?.reason);
+      if (typeof prev === 'function') prev(event);
+    };
+    return () => {
+      global.onunhandledrejection = prev;
+    };
+  }, []);
+
   return (
-    <ThemeProvider>
-      <SafeAreaProvider>
-        <AuthProvider>
-          <ClientDataProvider>
-            <ThemedRoot />
-          </ClientDataProvider>
-        </AuthProvider>
-      </SafeAreaProvider>
-    </ThemeProvider>
+    <AppErrorBoundary>
+      <ProductionConfigGate>
+        <ThemeProvider>
+          <SafeAreaProvider>
+            <NetworkProvider>
+              <AuthProvider>
+                <ClientDataProvider>
+                  <ThemedRoot />
+                </ClientDataProvider>
+              </AuthProvider>
+            </NetworkProvider>
+          </SafeAreaProvider>
+        </ThemeProvider>
+      </ProductionConfigGate>
+    </AppErrorBoundary>
   );
 }
 

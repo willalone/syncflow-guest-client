@@ -3,14 +3,14 @@ import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BRAND_LILAC, BRAND_LIME, borderRadius } from '../constants/theme';
 
-const PAD = 1.5;
+const PAD = 1;
 
 /**
- * Тонкая градиентная «оправа» без тяжёлой обводки: бренд читается, вес визуала лёгкий.
+ * Акцентная градиентная оправа — для hero и избранных блоков.
  */
 export default function GradientBorderCard({ children, style, innerStyle, colors }) {
-  const outerR = borderRadius.xl + PAD;
-  const innerR = borderRadius.xl;
+  const outerR = borderRadius['2xl'] + PAD;
+  const innerR = borderRadius['2xl'];
 
   return (
     <LinearGradient

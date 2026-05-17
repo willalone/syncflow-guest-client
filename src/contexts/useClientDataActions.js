@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import * as clientApi from '../services/api/clientApi';
 import { mapSyncflowReservationToBooking } from '../utils/bookingMap';
 import { normalizeTablesClientPayload } from '../utils/resolveMediaUrl';
@@ -256,11 +256,20 @@ export function useClientDataActions({
     return tablesData;
   }, [isAuthenticated, setTables]);
 
+  const saveProfileInFlightRef = useRef(false);
   const saveProfile = useCallback(async (patch) => {
-    const next = await clientApi.updateUserProfile(userId, patch);
-    setProfile(next);
-    await persistUserScope({ profile: next });
-    return next;
+    if (saveProfileInFlightRef.current) {
+      throw new Error('Сохранение профиля уже выполняется. Подождите.');
+    }
+    saveProfileInFlightRef.current = true;
+    try {
+      const next = await clientApi.updateUserProfile(userId, patch);
+      setProfile(next);
+      await persistUserScope({ profile: next });
+      return next;
+    } finally {
+      saveProfileInFlightRef.current = false;
+    }
   }, [userId, setProfile, persistUserScope]);
 
   const toggleFavorite = useCallback(async (dishId) => {
