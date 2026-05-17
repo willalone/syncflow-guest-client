@@ -3,7 +3,6 @@ import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindo
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import { BRAND_LILAC, BRAND_LIME, borderRadius, fontFamily, getColors, getShadows, spacing, typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import BrandHeaderAccent from '../components/BrandHeaderAccent';
@@ -13,6 +12,7 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import StaggeredEnter from '../components/StaggeredEnter';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { CLIENT_BRAND_KICKER } from '../constants/venue';
+import { isDishAvailableForVisit } from '../utils/menuAvailability';
 
 export default function MenuScreen({
   onOpenDish,
@@ -20,7 +20,9 @@ export default function MenuScreen({
   categories = ['Все'],
   favorites = [],
   onToggleFavorite,
-  onOpenWaiterCall,
+  preorderContext = null,
+  recommendedDishes = [],
+  canUseFavorites = true,
 }) {
   const { isDarkMode } = useTheme();
   const { width } = useWindowDimensions();
@@ -29,9 +31,27 @@ export default function MenuScreen({
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 180);
   const [activeCategory, setActiveCategory] = useState('Все');
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const numColumns = width >= 900 ? 3 : width >= 640 ? 2 : 1;
   const isTablet = numColumns > 1;
   const isCompact = width < 380;
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const currentMenuContext = useMemo(() => {
+    const d = new Date(nowTick);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return { date: `${yyyy}-${mm}-${dd}`, time: `${hh}:${min}` };
+  }, [nowTick]);
+
+  const availabilityContext = preorderContext || currentMenuContext;
 
   const displayedCategories = useMemo(() => {
     const base = Array.isArray(categories) && categories.length ? categories : ['Все'];
@@ -40,9 +60,9 @@ export default function MenuScreen({
     const allFirst = withoutFavorites.includes('Все')
       ? withoutFavorites
       : ['Все', ...withoutFavorites];
-    const favoriteCategory = favorites.length ? ['Избранное'] : [];
+    const favoriteCategory = canUseFavorites && favorites.length ? ['Избранное'] : [];
     return ['Все', ...favoriteCategory, ...allFirst.filter((item) => item !== 'Все')];
-  }, [categories, favorites.length]);
+  }, [categories, favorites.length, canUseFavorites]);
 
   useEffect(() => {
     if (!displayedCategories.includes(activeCategory)) {
@@ -52,6 +72,7 @@ export default function MenuScreen({
 
   const filteredDishes = useMemo(() => {
     return dishes.filter((dish) => {
+      if (!isDishAvailableForVisit(dish, availabilityContext)) return false;
       const categoryOk =
         activeCategory === 'Все'
           ? true
@@ -61,7 +82,15 @@ export default function MenuScreen({
       const queryOk = dish.title.toLowerCase().includes(debouncedQuery.trim().toLowerCase());
       return categoryOk && queryOk;
     });
-  }, [dishes, activeCategory, debouncedQuery, favorites]);
+  }, [dishes, activeCategory, debouncedQuery, favorites, availabilityContext]);
+
+  const dishesForFeatured = useMemo(() => {
+    const base =
+      Array.isArray(recommendedDishes) && recommendedDishes.length
+        ? recommendedDishes
+        : filteredDishes;
+    return base.filter((dish) => isDishAvailableForVisit(dish, availabilityContext));
+  }, [recommendedDishes, filteredDishes, availabilityContext]);
 
   useEffect(() => {
     dishes.slice(0, 8).forEach((dish) => {
@@ -83,19 +112,19 @@ export default function MenuScreen({
           onPress={onOpenDish}
           favorites={favorites}
           onToggleFavorite={onToggleFavorite}
-          showFavorite
+          showFavorite={canUseFavorites}
         />
       </StaggeredEnter>
     ),
-    [onOpenDish, isTablet, isCompact, colors, shadowsThemed, onToggleFavorite, favorites]
+    [onOpenDish, isTablet, isCompact, colors, shadowsThemed, onToggleFavorite, favorites, canUseFavorites]
   );
 
   const renderMenuListHeader = useCallback(() => {
     if (activeCategory !== 'Все') {
       return null;
     }
-    return <FeaturedDishesCarousel dishes={dishes} colors={colors} onOpenDish={onOpenDish} />;
-  }, [activeCategory, dishes, colors, onOpenDish]);
+    return <FeaturedDishesCarousel dishes={dishesForFeatured} colors={colors} onOpenDish={onOpenDish} />;
+  }, [activeCategory, dishesForFeatured, colors, onOpenDish]);
 
   return (
     <ScreenBackdrop isDarkMode={isDarkMode}>
@@ -112,16 +141,6 @@ export default function MenuScreen({
               style={styles.titleAccent}
             />
           </View>
-          {onOpenWaiterCall ? (
-            <TouchableOpacity
-              onPress={() => onOpenWaiterCall()}
-              style={[styles.waiterIconWrap, { backgroundColor: colors.card, borderColor: colors.hairline }]}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityLabel="Вызов официанта"
-            >
-              <Ionicons name="hand-left-outline" size={24} color={colors.primary} />
-            </TouchableOpacity>
-          ) : null}
         </View>
         <TextInput
           style={[
@@ -133,6 +152,11 @@ export default function MenuScreen({
           placeholder="Поиск блюда"
           placeholderTextColor={colors.textMuted}
         />
+        {preorderContext ? (
+          <Text style={[styles.preorderContextHint, { color: colors.textMuted }]}>
+            Предзаказ на {preorderContext.date} к {preorderContext.time}: показаны только доступные позиции.
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.categoriesRail}>
@@ -204,21 +228,15 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.sans,
   },
   titleAccent: { width: 44, height: 3, borderRadius: 2, marginTop: spacing.sm },
-  waiterIconWrap: {
-    padding: spacing.sm,
-    minWidth: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.round,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignSelf: 'center',
-  },
   search: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: borderRadius.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     ...typography.body,
+  },
+  preorderContextHint: {
+    ...typography.caption,
   },
   categoriesRail: {
     height: 52,

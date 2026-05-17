@@ -55,8 +55,8 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
 
     Animated.timing(slideX, {
       toValue: target,
-      duration: 240,
-      easing: Easing.out(Easing.cubic),
+      duration: 210,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
       useNativeDriver: true,
     }).start();
   }, [activeIndex, tabsWidth, slideX]);
@@ -75,20 +75,30 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
       scale.setValue(1);
       Animated.sequence([
         Animated.timing(scale, {
-          toValue: 1.1,
-          duration: 90,
-          easing: Easing.out(Easing.cubic),
+          toValue: 1.05,
+          duration: 85,
+          easing: Easing.out(Easing.quad),
           useNativeDriver: true,
         }),
         Animated.timing(scale, {
           toValue: 1,
-          duration: 140,
-          easing: Easing.out(Easing.cubic),
+          duration: 150,
+          easing: Easing.bezier(0.22, 1, 0.36, 1),
           useNativeDriver: true,
         }),
       ]).start();
     });
   };
+
+  const handleTabNavigate = React.useCallback((tabId) => {
+    if (tabId === currentScreen) return;
+    onNavigate(tabId);
+  }, [currentScreen, onNavigate]);
+
+  const handleTabPulse = React.useCallback((tabId) => {
+    if (tabId === currentScreen) return;
+    pulseTabIcon(tabId);
+  }, [currentScreen]);
 
   return (
     <View style={[styles.floatWrap, { paddingBottom: bottomPad }]}>
@@ -109,10 +119,9 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
               <TouchableOpacity
                 key={tab.id}
                 style={styles.tabButton}
-                onPress={() => {
-                  pulseTabIcon(tab.id);
-                  onNavigate(tab.id);
-                }}
+                onPressIn={() => handleTabNavigate(tab.id)}
+                onPress={() => handleTabPulse(tab.id)}
+                delayPressIn={0}
                 activeOpacity={0.85}
               >
                 <View style={styles.iconSlot}>

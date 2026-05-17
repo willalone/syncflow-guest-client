@@ -89,6 +89,7 @@ export async function createBooking(payload, userId) {
       text: `Напоминание: у вас бронь по адресу ${payload.address || 'указанный адрес'} через 1 час.`,
       targetScreen: 'Bookings',
       targetId: booking.id,
+      read: false,
       createdAt: new Date().toISOString(),
     },
     {
@@ -96,6 +97,7 @@ export async function createBooking(payload, userId) {
       type: 'booking_confirmed',
       title: 'Бронирование подтверждено',
       text: `Стол забронирован на ${payload.date} ${payload.time}.${preorderHint}`,
+      read: false,
       createdAt: new Date().toISOString(),
     },
     ...notifications,
@@ -333,9 +335,7 @@ export async function fetchUserProfile(userId) {
     return JSON.parse(raw);
   }
   const profile = {
-    role: 'Гость',
     loyaltyPoints: 0,
-    xpPoints: 0,
     firstName: '',
     lastName: '',
     birthDate: '',
@@ -425,6 +425,10 @@ export async function registerPushDevice() {
   return { ok: true };
 }
 
+export async function unregisterPushDevice() {
+  return { ok: true };
+}
+
 export async function sendTestPush(userId, payload = {}) {
   const notifications = await readNotifications(userId);
   await writeNotifications(userId, [
@@ -454,10 +458,25 @@ export async function applyPromoCode(code) {
   return {
     id: 1,
     code: String(code || 'DEMO'),
+    value: 5,
     discountValue: 5,
     isPercentage: true,
     isActive: true,
   };
+}
+
+export async function fetchMenuRecommended(limit) {
+  const menu = await fetchMenu();
+  const n = Math.max(1, Math.min(50, Number(limit) || 5));
+  return menu.dishes.slice(0, n);
+}
+
+export async function applyPromoToOrder() {
+  return { ok: true };
+}
+
+export async function syncReservationPreorder() {
+  return { ok: true };
 }
 
 export async function spendBonusPoints() {
@@ -471,8 +490,61 @@ export async function fetchReservationById(id) {
     reservHourFrom: '19:00:00',
     reservHourTo: '21:00:00',
     status: 'CREATED',
-    guestName: 'Демо гость',
-    guestPhoneNumber: '+79990000000',
     table: { id: 1, seatCount: 4, status: 'AVAILABLE' },
+  };
+}
+
+export async function fetchOrderDishes() {
+  return [];
+}
+
+export async function fetchReservationPreorder() {
+  return [];
+}
+
+export async function removeReservationPreorderItem() {
+  return null;
+}
+
+export async function fetchNotificationsUnreadCount(userId) {
+  const rows = await readNotifications(userId);
+  return rows.filter((n) => n.read === false).length;
+}
+
+export async function markNotificationRead(userId, notificationId) {
+  const rows = await readNotifications(userId);
+  const next = rows.map((n) => (String(n.id) === String(notificationId) ? { ...n, read: true } : n));
+  await writeNotifications(userId, next);
+  return { ok: true };
+}
+
+export async function markAllNotificationsRead(userId) {
+  const rows = await readNotifications(userId);
+  await writeNotifications(
+    userId,
+    rows.map((n) => ({ ...n, read: true }))
+  );
+  return { ok: true };
+}
+
+export async function fetchBonusTransactions() {
+  return [];
+}
+
+export async function tryApplyGuestPersonalDiscount() {
+  return null;
+}
+
+export async function fetchOrderSummary(orderId) {
+  const id = Number(orderId);
+  if (!Number.isFinite(id)) return null;
+  return {
+    orderId: String(id),
+    grossTotal: 0,
+    subtotal: 0,
+    finalTotal: 0,
+    discounts: [],
+    serviceCharge: null,
+    dishes: [],
   };
 }

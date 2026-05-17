@@ -1,8 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
-import { Animated, Dimensions, Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getColors } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,17 +19,18 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import OrdersHistoryScreen from '../screens/OrdersHistoryScreen';
 import BookingsHistoryScreen from '../screens/BookingsHistoryScreen';
 import BookingDetailScreen from '../screens/BookingDetailScreen';
-import DeliveriesHistoryScreen from '../screens/DeliveriesHistoryScreen';
 import BarScreen from '../screens/BarScreen';
 
 // Navigation
 import TabBar from '../components/TabBar';
 import AppToast from '../components/AppToast';
 import LoadingOverlay from '../components/LoadingOverlay';
-import WaiterCallModal from '../components/WaiterCallModal';
-import { calculateCartTotal } from '../utils/cart';
-import { runtimeConfig } from '../config/runtimeConfig';
 import { CLIENT_APP_TITLE } from '../constants/venue';
+import { useToastManager } from '../hooks/useToastManager';
+import { useNetworkRecovery } from '../hooks/useNetworkRecovery';
+import { useTabSwipeNavigation } from '../hooks/useTabSwipeNavigation';
+import { useCheckoutFlow } from '../hooks/useCheckoutFlow';
+import { getNativePushToken } from '../services/pushToken';
 
 const TAB_ORDER = ['Menu', 'Bar', 'Cart', 'Booking', 'Profile'];
 const NativeTabStack = createNativeStackNavigator();
@@ -37,9 +38,11 @@ const NativeTabStack = createNativeStackNavigator();
 export default function AppNavigator() {
   const screenWidth = Dimensions.get('window').width;
   const { isDarkMode } = useTheme();
+  const insets = useSafeAreaInsets();
   const { isAuthenticated, isLoadingSession, user } = useAuth();
   const {
     menu,
+    recommendedDishes,
     tables,
     bookings,
     cartItems,
@@ -49,9 +52,6 @@ export default function AppNavigator() {
     createOrder,
     payOrder,
     submitOrderReview,
-    registerPushDevice,
-    sendTestPush,
-    requestWaiterCall,
     orders,
     notifications,
     ordersHasMore,
@@ -60,6 +60,8 @@ export default function AppNavigator() {
     isLoadingMoreNotifications,
     loadMoreOrders,
     loadMoreNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
     profile,
     favorites,
     toggleFavorite,
@@ -70,37 +72,53 @@ export default function AppNavigator() {
     clearPromo,
     spendGuestBonus,
     fetchBookingDetail,
+    registerPushDevice,
+    refreshAvailableTables,
   } =
     useClientData();
   const colors = getColors(isDarkMode);
   const [currentScreen, setCurrentScreen] = useState('Menu');
   const [selectedDish, setSelectedDish] = useState(null);
   const [selectedBooking, setSelectedBooking] = useState(null);
-  const [checkoutOptions, setCheckoutOptions] = useState(null);
+  const [guestAuthOpen, setGuestAuthOpen] = useState(false);
+  const [preorderContext, setPreorderContext] = useState(null);
+  const wasAuthenticatedRef = useRef(false);
+  const preorderActiveRef = useRef(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [toast, setToast] = useState({ visible: false, type: 'success', message: '' });
-  const [paymentPrompt, setPaymentPrompt] = useState({ visible: false, orderId: null });
-  const [waiterModalVisible, setWaiterModalVisible] = useState(false);
-  const [tabTransitionAnimation, setTabTransitionAnimation] = useState('slide_from_right');
   const registeredPushUserRef = useRef(null);
   const tabNavigationRef = useRef(null);
-  const transitionOverlayOpacity = useRef(new Animated.Value(0)).current;
-  const transitionOverlayScale = useRef(new Animated.Value(1.02)).current;
-  const currentScreenRef = useRef(currentScreen);
-  const canSwipeTabs = isAuthenticated && !selectedDish && !selectedBooking && TAB_ORDER.includes(currentScreen);
-  const canSwipeTabsRef = useRef(canSwipeTabs);
-
-  React.useEffect(() => {
-    currentScreenRef.current = currentScreen;
-    canSwipeTabsRef.current = canSwipeTabs;
-  }, [currentScreen, canSwipeTabs]);
-
-  React.useEffect(() => {
-    if (!TAB_ORDER.includes(currentScreen)) return;
-    requestAnimationFrame(() => {
-      tabNavigationRef.current?.navigate(currentScreen);
-    });
-  }, [currentScreen]);
+  const { toast, showRawToast } = useToastManager();
+  const { showToast } = useNetworkRecovery(showRawToast);
+  const {
+    canSwipeTabs,
+    navigateToScreen,
+    leftEdgeSwipeResponder,
+    rightEdgeSwipeResponder,
+    transitionOverlayOpacity,
+    transitionOverlayScale,
+  } = useTabSwipeNavigation({
+    screenWidth,
+    tabOrder: TAB_ORDER,
+    isAuthenticated,
+    currentScreen,
+    selectedDish,
+    selectedBooking,
+    setSelectedDish,
+    setSelectedBooking,
+    setCurrentScreen,
+    tabNavigationRef,
+  });
+  const { paymentPrompt, onCheckout, onBookingSubmit, handlePayNow, handlePayLater } = useCheckoutFlow({
+    cartItems,
+    menuDishes: menu.dishes,
+    createOrder,
+    createBooking,
+    clearCart,
+    spendGuestBonus,
+    payOrder,
+    showToast,
+    navigateToScreen,
+  });
 
   React.useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 1200);
@@ -108,314 +126,97 @@ export default function AppNavigator() {
   }, []);
 
   React.useEffect(() => {
-    async function bindPushDevice() {
-      if (!isAuthenticated || !user?.id) return;
+    const justSignedIn = isAuthenticated && !wasAuthenticatedRef.current;
+    if (justSignedIn) {
+      // Keep tabbar state aligned with the first authenticated screen.
+      setCurrentScreen('Menu');
+      setSelectedDish(null);
+      setSelectedBooking(null);
+      setGuestAuthOpen(false);
+      setPreorderContext(null);
+    }
+    wasAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
+
+  React.useEffect(() => {
+    // Keep preorder context only inside booking flow (Booking -> Menu -> Cart -> dish details).
+    if (!preorderContext) {
+      preorderActiveRef.current = false;
+      return;
+    }
+    const inPreorderFlow =
+      currentScreen === 'Booking' ||
+      currentScreen === 'Menu' ||
+      currentScreen === 'Cart' ||
+      Boolean(selectedDish);
+    if (inPreorderFlow) {
+      preorderActiveRef.current = true;
+      return;
+    }
+    if (preorderActiveRef.current) {
+      setPreorderContext(null);
+      preorderActiveRef.current = false;
+    }
+  }, [currentScreen, selectedDish, preorderContext]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function bindPushToken() {
+      if (!isAuthenticated || !user?.id) {
+        registeredPushUserRef.current = null;
+        return;
+      }
       if (registeredPushUserRef.current === user.id) return;
+      const token = await getNativePushToken();
+      if (!token || cancelled) return;
       try {
         await registerPushDevice({
           platform: Platform.OS === 'ios' ? 'ios' : 'android',
-          deviceToken: `demo-token-${Platform.OS}-${user.id}`,
-          deviceName: Platform.OS === 'ios' ? 'iPhone' : 'Android',
-          appVersion: '1.0.0',
+          deviceToken: token,
         });
-        registeredPushUserRef.current = user.id;
+        if (!cancelled) {
+          registeredPushUserRef.current = user.id;
+        }
       } catch {
-        // non-blocking for demo mode
+        // no-op: push binding should not block UI
       }
     }
-    bindPushDevice();
+    bindPushToken();
+    return () => {
+      cancelled = true;
+    };
   }, [isAuthenticated, user?.id, registerPushDevice]);
 
-  const showToast = (type, message) => {
-    setToast({ visible: true, type, message });
-    setTimeout(() => {
-      setToast((prev) => ({ ...prev, visible: false }));
-    }, 2600);
-  };
-
-  const submitWaiterFromModal = React.useCallback(
-    async (payload) => {
-      try {
-        await requestWaiterCall(payload);
-        showToast('success', 'Запрос официанту отправлен');
-        setWaiterModalVisible(false);
-      } catch (error) {
-        showToast('error', error?.message || 'Не удалось отправить запрос официанту. Попробуйте еще раз.');
-      }
-    },
-    [requestWaiterCall]
-  );
-
-  const navigateToScreen = React.useCallback((screen, direction = 'left') => {
-    const fromScreen = currentScreenRef.current;
-    const canUseTabTransition = TAB_ORDER.includes(fromScreen) && TAB_ORDER.includes(screen) && !selectedDish && !selectedBooking;
-    if (canUseTabTransition && fromScreen !== screen) {
-      const fromIndex = TAB_ORDER.indexOf(fromScreen);
-      const toIndex = TAB_ORDER.indexOf(screen);
-      const isForward = toIndex > fromIndex;
-      transitionOverlayOpacity.stopAnimation();
-      transitionOverlayScale.stopAnimation();
-      transitionOverlayOpacity.setValue(0);
-      transitionOverlayScale.setValue(1.02);
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(transitionOverlayOpacity, {
-            toValue: 0.092,
-            duration: 130,
-            useNativeDriver: true,
-          }),
-          Animated.timing(transitionOverlayOpacity, {
-            toValue: 0,
-            duration: 320,
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.timing(transitionOverlayScale, {
-          toValue: 1,
-          duration: 450,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      setTabTransitionAnimation(
-        isForward ? 'slide_from_right' : 'slide_from_left'
-      );
-      setSelectedDish(null);
-      setSelectedBooking(null);
-      setCurrentScreen(screen);
-      requestAnimationFrame(() => {
-        tabNavigationRef.current?.navigate(screen);
-      });
-      return;
-    }
-    setSelectedDish(null);
-    setSelectedBooking(null);
-    setCurrentScreen(screen);
-  }, [selectedDish, selectedBooking, transitionOverlayOpacity, transitionOverlayScale]);
-
-  const navigateAdjacentTab = React.useCallback(
-    (delta) => {
-      const idx = TAB_ORDER.indexOf(currentScreenRef.current);
-      if (idx < 0) return;
-      const nextIdx = idx + delta;
-      if (nextIdx < 0 || nextIdx >= TAB_ORDER.length) return;
-      const nextScreen = TAB_ORDER[nextIdx];
-      navigateToScreen(nextScreen, delta > 0 ? 'left' : 'right');
-    },
-    [navigateToScreen]
-  );
-
-  const leftEdgeSwipeResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponderCapture: (_, gestureState) => {
-        if (!canSwipeTabsRef.current) return false;
-        return gestureState.x0 <= 86;
-      },
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        if (!canSwipeTabsRef.current) return false;
-        const { dx, dy, x0 } = gestureState;
-        const fromEdge = x0 <= 86;
-        const allowWideSwipe = currentScreenRef.current !== 'Menu';
-        if (!fromEdge && !allowWideSwipe) return false;
-        return dx < -10 && Math.abs(dx) > Math.abs(dy) * 1.06;
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (!canSwipeTabsRef.current) return;
-        const { dx, vx } = gestureState;
-        if (dx < -34 || vx < -0.34) {
-          navigateAdjacentTab(1);
-        }
-      },
-      onPanResponderTerminate: () => {},
-    })
-  ).current;
-
-  const rightEdgeSwipeResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponderCapture: (_, gestureState) => {
-        if (!canSwipeTabsRef.current) return false;
-        return gestureState.x0 >= screenWidth - 86;
-      },
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        if (!canSwipeTabsRef.current) return false;
-        const { dx, dy, x0 } = gestureState;
-        const fromEdge = x0 >= screenWidth - 86;
-        const allowWideSwipe = currentScreenRef.current !== 'Menu';
-        if (!fromEdge && !allowWideSwipe) return false;
-        return dx > 10 && Math.abs(dx) > Math.abs(dy) * 1.06;
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (!canSwipeTabsRef.current) return;
-        const { dx, vx } = gestureState;
-        if (dx > 34 || vx > 0.34) {
-          navigateAdjacentTab(-1);
-        }
-      },
-      onPanResponderTerminate: () => {},
-    })
-  ).current;
-
-  const addToCart = (dishId, quantity) => {
-    addCartItem(dishId, quantity);
-    navigateToScreen('Cart', 'left');
+  const addToCart = (dishId, quantity, options = {}) => {
+    addCartItem(dishId, quantity, options);
+    navigateToScreen('Cart');
   };
 
   const changeQty = changeCartQty;
 
   const openNotificationTarget = React.useCallback((notification) => {
+    if (notification?.id != null && notification.read !== true) {
+      markNotificationRead(notification.id);
+    }
     const targetScreen = String(notification?.targetScreen || '');
     if (targetScreen) {
-      const allowed = new Set(['Menu', 'Bar', 'Cart', 'Booking', 'Profile', 'Notifications', 'Orders', 'Bookings', 'Deliveries']);
+      const allowed = new Set(['Menu', 'Bar', 'Cart', 'Booking', 'Profile', 'Notifications', 'Orders', 'Bookings']);
       if (allowed.has(targetScreen)) {
-        navigateToScreen(targetScreen, 'left');
+        navigateToScreen(targetScreen);
         return;
       }
     }
     const type = String(notification?.type || '').toLowerCase();
     if (['bonus_spent', 'bonus_earned', 'xp_earned', 'payment', 'review', 'push'].includes(type)) {
-      navigateToScreen('Orders', 'left');
+      navigateToScreen('Orders');
       return;
     }
     if (['booking_confirmed'].includes(type)) {
-      navigateToScreen('Booking', 'left');
+      navigateToScreen('Booking');
       return;
     }
-    navigateToScreen('Profile', 'left');
-  }, [navigateToScreen]);
-
-  const onCheckout = async (options = {}) => {
-    setCheckoutOptions(options);
-    if (options.orderType === 'booking') {
-      navigateToScreen('Booking', 'left');
-      return;
-    }
-
-    const total = calculateCartTotal(cartItems, menu.dishes);
-    const detailedItems = cartItems.map((item) => {
-      const dish = menu.dishes.find((value) => value.id === item.id);
-      return {
-        id: item.id,
-        title: dish?.title || item.id,
-        unitPrice: dish?.price || 0,
-        quantity: item.quantity,
-      };
-    });
-    try {
-      const createdOrder = await createOrder({
-        items: detailedItems,
-        total,
-        orderType: options.orderType,
-        useLoyaltyPoints: Boolean(options.useLoyaltyPoints),
-        pointsToSpend: Number(options.pointsToSpend || 0),
-        deliveryDetails: options.deliveryDetails || null,
-        bookingDraft: {
-          address: options.orderType === 'delivery' ? options.deliveryAddress : options.pickupAddress || '',
-        },
-        appliedPromo: options.appliedPromo || null,
-        promoDiscountRub: options.promoDiscountRub ?? 0,
-      });
-      if (
-        runtimeConfig.integratedBackend === 'syncflow' &&
-        options.useLoyaltyPoints &&
-        Number(options.pointsToSpend || 0) > 0 &&
-        createdOrder?.id != null &&
-        Number.isFinite(Number(createdOrder.id))
-      ) {
-        try {
-          await spendGuestBonus({
-            amount: Number(options.pointsToSpend),
-            orderId: Number(createdOrder.id),
-          });
-        } catch (e) {
-          showToast(
-            'error',
-            e?.message || 'Заказ создан, но бонусы не удалось списать. Попробуйте позже или обратитесь в ресторан.'
-          );
-        }
-      }
-      await clearCart();
-      navigateToScreen('Profile', 'left');
-      if (createdOrder?.paymentStatus === 'pending' || createdOrder?.status === 'created') {
-        setPaymentPrompt({ visible: true, orderId: createdOrder.id });
-      } else {
-        showToast('success', 'Заказ успешно оформлен.');
-      }
-    } catch (error) {
-      showToast('error', error?.message || 'Не удалось оформить заказ. Проверьте данные и повторите попытку.');
-    }
-  };
-
-  const onBookingSubmit = async (payload) => {
-    try {
-      const total = calculateCartTotal(cartItems, menu.dishes);
-      const detailedItems = cartItems.map((item) => {
-        const dish = menu.dishes.find((value) => value.id === item.id);
-        return {
-          id: item.id,
-          title: dish?.title || item.id,
-          unitPrice: dish?.price || 0,
-          quantity: item.quantity,
-        };
-      });
-      const booking = await createBooking({
-        ...payload,
-        preorderItems: detailedItems.length ? detailedItems : undefined,
-      });
-      if (!detailedItems.length) {
-        navigateToScreen('Profile', 'left');
-        showToast('success', 'Бронирование успешно оформлено.');
-        return true;
-      }
-      if (runtimeConfig.integratedBackend === 'syncflow') {
-        await clearCart();
-        navigateToScreen('Profile', 'left');
-        showToast(
-          'success',
-          'Бронирование создано. Список блюд из корзины покажите официанту при визите — заказ оформят в зале.'
-        );
-        return true;
-      }
-      const serveAt = `${payload?.date || ''} ${payload?.servingTime || payload?.time || ''}`.trim();
-      const createdOrder = await createOrder({
-        items: detailedItems,
-        total,
-        orderType: checkoutOptions?.orderType || 'booking',
-        useLoyaltyPoints: Boolean(checkoutOptions?.useLoyaltyPoints),
-        pointsToSpend: Number(checkoutOptions?.pointsToSpend || 0),
-        bookingId: booking?.id || null,
-        scheduledAt: serveAt,
-        bookingDraft: payload,
-      });
-      await clearCart();
-      navigateToScreen('Profile', 'left');
-      if (createdOrder?.paymentStatus === 'pending' || createdOrder?.status === 'created') {
-        setPaymentPrompt({ visible: true, orderId: createdOrder.id });
-      } else {
-        showToast('success', 'Бронирование и заказ успешно оформлены.');
-      }
-      return true;
-    } catch (error) {
-      showToast('error', error?.message || 'Не удалось завершить оформление. Попробуйте снова.');
-      return false;
-    }
-  };
-
-  const handlePayNow = async () => {
-    if (!paymentPrompt.orderId) return;
-    try {
-      await payOrder(paymentPrompt.orderId);
-      setPaymentPrompt({ visible: false, orderId: null });
-      navigateToScreen('Orders', 'left');
-      showToast('success', 'Оплата прошла успешно.');
-    } catch (error) {
-      showToast('error', error?.message || 'Не удалось провести оплату. Повторите попытку.');
-    }
-  };
-
-  const handlePayLater = () => {
-    setPaymentPrompt({ visible: false, orderId: null });
-    navigateToScreen('Orders', 'left');
-    showToast('success', 'Статус заказа: ожидание оплаты. Оплатить можно в истории заказов.');
-  };
+    navigateToScreen('Profile');
+  }, [markNotificationRead, navigateToScreen]);
 
   const renderTabScreen = React.useCallback((screen) => {
     switch (screen) {
@@ -427,7 +228,8 @@ export default function AppNavigator() {
             categories={menu.categories}
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
-            onOpenWaiterCall={() => setWaiterModalVisible(true)}
+            preorderContext={preorderContext}
+            recommendedDishes={recommendedDishes}
           />
         );
       case 'Cart':
@@ -441,6 +243,7 @@ export default function AppNavigator() {
             onValidationError={(message) => showToast('error', message)}
             onPromoMessage={(type, message) => showToast(type, message)}
             loyaltyPoints={profile?.loyaltyPoints || 0}
+            guestDiscountPercentage={profile?.discountPercentage}
             appliedPromo={appliedPromo}
             onApplyPromo={applyPromo}
             onClearPromo={clearPromo}
@@ -452,8 +255,12 @@ export default function AppNavigator() {
             tables={tables}
             cartItems={cartItems}
             dishes={menu.dishes}
-            onGoToMenuForPreorder={() => navigateToScreen('Menu', 'right')}
+            onGoToMenuForPreorder={(ctx) => {
+              setPreorderContext(ctx || null);
+              navigateToScreen('Menu');
+            }}
             onChangeCartQty={changeQty}
+            onRequestAvailableTables={refreshAvailableTables}
             onSubmitBooking={onBookingSubmit}
           />
         );
@@ -462,38 +269,36 @@ export default function AppNavigator() {
       case 'Profile':
         return (
           <ProfileScreen
-            onOpenNotifications={() => navigateToScreen('Notifications', 'left')}
-            onOpenBookings={() => navigateToScreen('Bookings', 'left')}
-            onOpenOrders={() => navigateToScreen('Orders', 'left')}
-            onOpenDeliveries={() => navigateToScreen('Deliveries', 'left')}
-            onSendTestPush={async () => {
-              try {
-                await sendTestPush({
-                  title: 'Push: статус сервиса',
-                  body: 'Тестовое push-уведомление успешно доставлено.',
-                  targetScreen: 'Orders',
-                });
-                showToast('success', 'Push-уведомление отправлено');
-              } catch (error) {
-                showToast('error', error?.message || 'Не удалось отправить push-уведомление.');
-              }
-            }}
+            onOpenNotifications={() => navigateToScreen('Notifications')}
+            onOpenBookings={() => navigateToScreen('Bookings')}
+            onOpenOrders={() => navigateToScreen('Orders')}
           />
         );
       default:
         return null;
     }
-  }, [menu.dishes, menu.categories, favorites, toggleFavorite, cartItems, changeQty, onCheckout, addCartItem, profile?.loyaltyPoints, appliedPromo, applyPromo, clearPromo, tables, navigateToScreen, onBookingSubmit, sendTestPush]);
+  }, [menu.dishes, menu.categories, favorites, toggleFavorite, cartItems, changeQty, onCheckout, addCartItem, profile?.loyaltyPoints, profile?.discountPercentage, appliedPromo, applyPromo, clearPromo, tables, preorderContext, navigateToScreen, refreshAvailableTables, onBookingSubmit, showToast]);
 
   const renderNativeTabs = React.useMemo(() => (
-    <NavigationContainer independent ref={tabNavigationRef}>
+    <NavigationContainer
+      independent
+      ref={tabNavigationRef}
+      onStateChange={() => {
+        const route = tabNavigationRef.current?.getCurrentRoute?.();
+        const name = String(route?.name || '');
+        if (TAB_ORDER.includes(name) && name !== currentScreen) {
+          setCurrentScreen(name);
+        }
+      }}
+    >
       <NativeTabStack.Navigator
         initialRouteName="Menu"
         screenOptions={{
           headerShown: false,
-          animation: tabTransitionAnimation,
-          animationDuration: 360,
+          animation: 'fade',
+          animationDuration: 220,
           gestureEnabled: false,
+          contentStyle: { backgroundColor: colors.background },
         }}
       >
         {TAB_ORDER.map((screenName) => (
@@ -503,17 +308,9 @@ export default function AppNavigator() {
         ))}
       </NativeTabStack.Navigator>
     </NavigationContainer>
-  ), [renderTabScreen, tabTransitionAnimation]);
+  ), [renderTabScreen, colors.background, currentScreen]);
 
-  const renderScreen = useMemo(() => {
-    if (isLoadingSession) {
-      return null;
-    }
-
-    if (!isAuthenticated) {
-      return <AuthScreen />;
-    }
-
+  const overlayScreen = useMemo(() => {
     if (selectedBooking) {
       return (
         <BookingDetailScreen
@@ -532,73 +329,89 @@ export default function AppNavigator() {
           dishes={menu.dishes}
           onBack={() => setSelectedDish(null)}
           onAddToCart={addToCart}
+          canOrder={isAuthenticated}
+          onOpenAuth={() => {
+            setSelectedDish(null);
+            setGuestAuthOpen(true);
+          }}
         />
       );
     }
-    switch (currentScreen) {
-      case 'Menu':
-      case 'Bar':
-      case 'Cart':
-      case 'Booking':
-      case 'Profile':
-        return renderNativeTabs;
-      case 'Notifications':
-        return (
-          <NotificationsScreen
-            notifications={notifications}
-            onBack={() => navigateToScreen('Profile', 'right')}
-            onOpenNotification={openNotificationTarget}
-            hasMore={notificationsHasMore}
-            isLoadingMore={isLoadingMoreNotifications}
-            onLoadMore={loadMoreNotifications}
-          />
-        );
-      case 'Orders':
-        return (
-          <OrdersHistoryScreen
-            orders={orders}
-            onBack={() => navigateToScreen('Profile', 'right')}
-            onPayOrder={payOrder}
-            onSubmitReview={submitOrderReview}
-            onActionError={(message) => showToast('error', message)}
-            hasMore={ordersHasMore}
-            isLoadingMore={isLoadingMoreOrders}
-            onLoadMore={loadMoreOrders}
-          />
-        );
-      case 'Deliveries':
-        return (
-          <DeliveriesHistoryScreen
-            deliveries={(orders || []).filter((item) => String(item.orderType || '') === 'delivery')}
-            onBack={() => navigateToScreen('Profile', 'right')}
-          />
-        );
-      case 'Bookings':
-        return (
-          <BookingsHistoryScreen
-            bookings={bookings}
-            onBack={() => navigateToScreen('Profile', 'right')}
-            onOpenBooking={(b) => {
-              setSelectedDish(null);
-              setSelectedBooking(b);
-            }}
-          />
-        );
-      default:
-        return renderTabScreen('Menu');
+
+    if (currentScreen === 'Notifications') {
+      return (
+        <NotificationsScreen
+          notifications={notifications}
+          onBack={() => navigateToScreen('Profile')}
+          onOpenNotification={openNotificationTarget}
+          onMarkAllRead={markAllNotificationsRead}
+          hasMore={notificationsHasMore}
+          isLoadingMore={isLoadingMoreNotifications}
+          onLoadMore={loadMoreNotifications}
+        />
+      );
     }
+
+    if (currentScreen === 'Orders') {
+      return (
+        <OrdersHistoryScreen
+          orders={orders}
+          onBack={() => navigateToScreen('Profile')}
+          onPayOrder={payOrder}
+          onSubmitReview={submitOrderReview}
+          onActionError={(message) => showToast('error', message)}
+          hasMore={ordersHasMore}
+          isLoadingMore={isLoadingMoreOrders}
+          onLoadMore={loadMoreOrders}
+        />
+      );
+    }
+
+    if (currentScreen === 'Bookings') {
+      return (
+        <BookingsHistoryScreen
+          bookings={bookings}
+          onBack={() => navigateToScreen('Profile')}
+          onOpenBooking={(b) => {
+            setSelectedDish(null);
+            setSelectedBooking(b);
+          }}
+        />
+      );
+    }
+
+    return null;
   }, [
-    currentScreen, selectedDish, selectedBooking, cartItems, isAuthenticated, isLoadingSession, menu, tables, bookings, favorites, profile,
-    notifications, orders, checkoutOptions, openNotificationTarget, fetchBookingDetail, renderTabScreen, renderNativeTabs,
-    appliedPromo, applyPromo, clearPromo, spendGuestBonus, createOrder,
-    notificationsHasMore, isLoadingMoreNotifications, loadMoreNotifications,
-    ordersHasMore, isLoadingMoreOrders, loadMoreOrders, navigateToScreen,
+    selectedBooking, fetchBookingDetail, selectedDish, menu.dishes, addToCart, isAuthenticated,
+    currentScreen, notifications, openNotificationTarget, markAllNotificationsRead, notificationsHasMore,
+    isLoadingMoreNotifications, loadMoreNotifications, orders, payOrder,
+    submitOrderReview, ordersHasMore, isLoadingMoreOrders, loadMoreOrders,
+    bookings, navigateToScreen, showToast,
   ]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.screenTransition}>
-        {renderScreen}
+        {isLoadingSession ? null : isAuthenticated ? (
+          renderNativeTabs
+        ) : guestAuthOpen ? (
+          <AuthScreen onBackToMenu={() => setGuestAuthOpen(false)} />
+        ) : (
+          <MenuScreen
+            onOpenDish={setSelectedDish}
+            dishes={menu.dishes}
+            categories={menu.categories}
+            favorites={[]}
+            onToggleFavorite={() => {}}
+            recommendedDishes={recommendedDishes}
+            canUseFavorites={false}
+          />
+        )}
+        {(isAuthenticated || Boolean(selectedDish)) && overlayScreen ? (
+          <View style={[styles.overlayScreen, { backgroundColor: colors.background }]}>
+            {overlayScreen}
+          </View>
+        ) : null}
       </View>
       <Animated.View
         pointerEvents="none"
@@ -621,6 +434,22 @@ export default function AppNavigator() {
             <Text style={[styles.modalText, { color: colors.textLight }]}>
               Заказ успешно создан. Выполнить оплату сейчас?
             </Text>
+            {paymentPrompt.summary?.finalTotal != null && Number(paymentPrompt.summary.finalTotal) > 0 ? (
+              <View style={{ marginBottom: 12, gap: 4 }}>
+                <Text style={[styles.modalText, { color: colors.text }]}>
+                  К оплате по чеку: {Number(paymentPrompt.summary.finalTotal).toFixed(2)} руб.
+                </Text>
+                {paymentPrompt.summary.grossTotal != null &&
+                Number(paymentPrompt.summary.grossTotal) !== Number(paymentPrompt.summary.finalTotal) ? (
+                  <Text style={[styles.modalFinePrint, { color: colors.textMuted }]}>
+                    До скидок: {Number(paymentPrompt.summary.grossTotal).toFixed(2)} руб.
+                    {Array.isArray(paymentPrompt.summary.discounts) && paymentPrompt.summary.discounts.length
+                      ? ` • скидки: ${paymentPrompt.summary.discounts.map((d) => d?.name || 'скидка').join(', ')}`
+                      : ''}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             <TouchableOpacity
               style={[styles.modalPrimaryBtn, { backgroundColor: colors.primary, borderColor: colors.border }]}
               onPress={handlePayNow}
@@ -633,21 +462,31 @@ export default function AppNavigator() {
           </View>
         </View>
       </Modal>
-      <WaiterCallModal
-        visible={waiterModalVisible}
-        onClose={() => setWaiterModalVisible(false)}
-        tables={tables}
-        onSubmit={submitWaiterFromModal}
-      />
       {isAuthenticated &&
       !selectedDish &&
       !selectedBooking &&
-      !['Notifications', 'Orders', 'Bookings', 'Deliveries'].includes(currentScreen) ? (
+      !['Notifications', 'Orders', 'Bookings'].includes(currentScreen) ? (
         <TabBar
           currentScreen={currentScreen}
-          onNavigate={(screen) => navigateToScreen(screen, 'left')}
+          onNavigate={(screen) => navigateToScreen(screen)}
           cartItems={cartItems}
         />
+      ) : null}
+      {!isAuthenticated && !isLoadingSession && !guestAuthOpen ? (
+        <TouchableOpacity
+          style={[
+            styles.guestAuthCta,
+            {
+              bottom: Math.max(insets.bottom, 12) + 12,
+              backgroundColor: colors.primary,
+              borderColor: colors.hairline,
+            },
+          ]}
+          onPress={() => setGuestAuthOpen(true)}
+          activeOpacity={0.9}
+        >
+          <Text style={[styles.guestAuthCtaText, { color: colors.black }]}>Войти / Регистрация</Text>
+        </TouchableOpacity>
       ) : null}
       <LoadingOverlay visible={isLoading || isLoadingSession || isBootstrapping} title={CLIENT_APP_TITLE} />
     </View>
@@ -661,6 +500,9 @@ const styles = StyleSheet.create({
   screenTransition: {
     flex: 1,
   },
+  overlayScreen: {
+    ...StyleSheet.absoluteFillObject,
+  },
   transitionOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
@@ -669,7 +511,7 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    width: 86,
+    width: 26,
     backgroundColor: 'transparent',
   },
   rightEdgeSwipeZone: {
@@ -677,7 +519,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    width: 86,
+    width: 26,
     backgroundColor: 'transparent',
   },
   modalBackdrop: {
@@ -702,6 +544,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 14,
   },
+  modalFinePrint: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
   modalPrimaryBtn: {
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
@@ -724,6 +570,20 @@ const styles = StyleSheet.create({
   modalSecondaryText: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  guestAuthCta: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guestAuthCtaText: {
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
 

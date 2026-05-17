@@ -13,6 +13,21 @@ import DishImage from './DishImage';
 
 const GAP = 14;
 const PAD = 1.5;
+const FEATURED_SIZE = 5;
+
+function hashString(value) {
+  let h = 0;
+  const s = String(value || '');
+  for (let i = 0; i < s.length; i += 1) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function daySeed() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
 
 const PagingDot = memo(function PagingDot({ index, scrollX, snap, activeColor }) {
   const style = useMemo(() => {
@@ -42,9 +57,35 @@ export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish
   const sidePad = spacing.lg;
 
   const featured = useMemo(() => {
-    const withImg = dishes.filter((d) => String(d.imageUrl || '').trim());
-    const scored = [...withImg].sort((a, b) => (b.rating || 0) - (a.rating || 0));
-    return scored.slice(0, 10);
+    const list = Array.isArray(dishes) ? dishes.filter(Boolean) : [];
+    if (!list.length) return [];
+
+    const prices = list
+      .map((dish) => Number(dish?.price || 0))
+      .filter((price) => Number.isFinite(price) && price > 0);
+    const minPrice = prices.length ? Math.min(...prices) : 0;
+    const maxPrice = prices.length ? Math.max(...prices) : 0;
+    const hasRatingData = list.some((dish) => Number(dish?.rating || 0) > 0);
+
+    const scored = list
+      .map((dish) => {
+        const rating = Number(dish?.rating || 0);
+        const price = Number(dish?.price || 0);
+        const priceNormalized =
+          maxPrice > minPrice && Number.isFinite(price)
+            ? (price - minPrice) / (maxPrice - minPrice)
+            : 0.5;
+        const affordability = 1 - priceNormalized; // cheaper = higher score
+        const qualityScore = hasRatingData
+          ? rating * 0.72 + affordability * 5 * 0.28
+          : affordability * 5;
+        const randomBoost = (hashString(`${daySeed()}-${dish?.id}`) % 1000) / 1000;
+        const totalScore = qualityScore + randomBoost * 0.45;
+        return { dish, totalScore };
+      })
+      .sort((a, b) => b.totalScore - a.totalScore);
+
+    return scored.slice(0, FEATURED_SIZE).map((row) => row.dish);
   }, [dishes]);
 
   const featuredKey = useMemo(() => featured.map((f) => f.id).join(','), [featured]);
@@ -53,7 +94,7 @@ export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish
     scrollX.setValue(0);
   }, [featuredKey, snap, scrollX]);
 
-  if (featured.length < 2) {
+  if (featured.length < 1) {
     return null;
   }
 
@@ -63,7 +104,9 @@ export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish
     <View style={styles.wrap}>
       <View style={styles.titleRow}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Сегодня рекомендуем</Text>
-        <Text style={[styles.sectionHint, { color: colors.textMuted }]}>свайп вбок</Text>
+        <Text style={[styles.sectionHint, { color: colors.textMuted }]}>
+          {featured.length > 1 ? 'свайп вбок' : 'подборка дня'}
+        </Text>
       </View>
       <Animated.FlatList
         data={featured}

@@ -1,13 +1,14 @@
-import React, { useMemo, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { borderRadius, getColors, spacing, typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import { buildCartPayableBreakdown, calculateCartTotal } from '../utils/cart';
 import { runtimeConfig } from '../config/runtimeConfig';
-import DishImage from '../components/DishImage';
 import BrandHeaderAccent from '../components/BrandHeaderAccent';
 import { DEFAULT_VENUE_LABEL } from '../constants/venue';
+import CartItemsList from './cart/CartItemsList';
+import CartFooterSection from './cart/CartFooterSection';
 
 export default function CartScreen({
   cartItems,
@@ -18,6 +19,7 @@ export default function CartScreen({
   onValidationError,
   onPromoMessage,
   loyaltyPoints = 0,
+  guestDiscountPercentage,
   appliedPromo = null,
   onApplyPromo,
   onClearPromo,
@@ -27,24 +29,39 @@ export default function CartScreen({
   const colors = getColors(isDarkMode);
   const isWide = width >= 768;
   const isCompact = width < 380;
-  const cartData = cartItems
-    .map((item) => {
-      const dish = dishes.find((d) => d.id === item.id);
-      return dish ? { ...dish, quantity: item.quantity } : null;
-    })
-    .filter(Boolean);
-  const total = calculateCartTotal(cartItems, dishes);
+  const dishById = useMemo(
+    () =>
+      dishes.reduce((acc, dish) => {
+        acc[dish.id] = dish;
+        return acc;
+      }, {}),
+    [dishes]
+  );
+  const cartData = useMemo(
+    () =>
+      cartItems
+        .map((item) => {
+          const dish = dishById[item.id];
+          if (!dish) return null;
+          const modifiers = Array.isArray(item.modifiers) ? item.modifiers : [];
+          const modifiersTotal = modifiers.reduce((sum, modifier) => sum + Number(modifier?.price || 0), 0);
+          return {
+            ...dish,
+            cartItemId: item.cartItemId || item.id,
+            quantity: item.quantity,
+            modifiers,
+            effectiveUnitPrice: Number(dish.price || 0) + modifiersTotal,
+          };
+        })
+        .filter(Boolean),
+    [cartItems, dishById]
+  );
+  const total = useMemo(() => calculateCartTotal(cartItems, dishes), [cartItems, dishes]);
   const showLoyaltyIntegrations = runtimeConfig.integratedBackend === 'syncflow' || runtimeConfig.useMockApi;
+  const showPromoInput = true;
   const [promoInput, setPromoInput] = useState('');
   const [promoBusy, setPromoBusy] = useState(false);
   const [orderType, setOrderType] = useState('booking');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [deliveryCity, setDeliveryCity] = useState('');
-  const [deliveryHouse, setDeliveryHouse] = useState('');
-  const [deliveryEntrance, setDeliveryEntrance] = useState('');
-  const [deliveryIntercom, setDeliveryIntercom] = useState('');
-  const [deliveryApartment, setDeliveryApartment] = useState('');
-  const [leaveAtDoor, setLeaveAtDoor] = useState(false);
   const [usePoints, setUsePoints] = useState(false);
   const [pointsInput, setPointsInput] = useState('');
   const breakdown = useMemo(
@@ -56,28 +73,17 @@ export default function CartScreen({
         usePoints,
         pointsToSpendRaw: pointsInput,
         loyaltyPoints,
+        guestDiscountPercentage,
       }),
-    [cartItems, dishes, appliedPromo, usePoints, pointsInput, loyaltyPoints]
+    [cartItems, dishes, appliedPromo, usePoints, pointsInput, loyaltyPoints, guestDiscountPercentage]
   );
-  const { promoRub, maxPointsAllowed, pointsDiscountRub, payable } = breakdown;
+  const { promoRub, guestDiscountRub, maxPointsAllowed, pointsDiscountRub, payable } = breakdown;
   const recommended = useMemo(() => {
     const ids = new Set(cartData.flatMap((item) => item.recommendedWith || []));
     return dishes.filter((dish) => ids.has(dish.id) && !cartItems.some((row) => row.id === dish.id)).slice(0, 4);
   }, [cartData, dishes, cartItems]);
 
-  const handleCheckout = async () => {
-    if (orderType === 'delivery' && !deliveryAddress.trim()) {
-      onValidationError?.('Укажите адрес доставки.');
-      return;
-    }
-    if (orderType === 'delivery' && !deliveryCity.trim()) {
-      onValidationError?.('Укажите город доставки.');
-      return;
-    }
-    if (orderType === 'delivery' && !deliveryHouse.trim()) {
-      onValidationError?.('Укажите дом для доставки.');
-      return;
-    }
+  const handleCheckout = useCallback(async () => {
     const requestedPointsRaw = Number(pointsInput.replace(/\D/g, '') || 0);
     if (usePoints && requestedPointsRaw > maxPointsAllowed) {
       onValidationError?.(`Можно списать максимум ${maxPointsAllowed} баллов.`);
@@ -90,29 +96,18 @@ export default function CartScreen({
 
     await onCheckout({
       orderType,
-      deliveryAddress: orderType === 'delivery' ? deliveryAddress : '',
-      deliveryDetails:
-        orderType === 'delivery'
-          ? {
-              city: deliveryCity.trim(),
-              addressLine: deliveryAddress.trim(),
-              house: deliveryHouse.trim(),
-              entrance: deliveryEntrance.trim(),
-              intercom: deliveryIntercom.trim(),
-              apartment: deliveryApartment.trim(),
-              leaveAtDoor: Boolean(leaveAtDoor),
-            }
-          : null,
+      deliveryAddress: '',
+      deliveryDetails: null,
       pickupAddress: orderType === 'pickup' ? DEFAULT_VENUE_LABEL : '',
       useLoyaltyPoints: usePoints,
       pointsToSpend: pointsDiscountRub,
       appliedPromo,
       promoDiscountRub: promoRub,
     });
-  };
+  }, [pointsInput, usePoints, maxPointsAllowed, pointsDiscountRub, onCheckout, orderType, appliedPromo, promoRub, onValidationError]);
 
-  const handleApplyPromo = async () => {
-    if (!onApplyPromo) return;
+  const handleApplyPromo = useCallback(async () => {
+    if (!onApplyPromo || !showPromoInput) return;
     try {
       setPromoBusy(true);
       await onApplyPromo(promoInput);
@@ -123,7 +118,7 @@ export default function CartScreen({
     } finally {
       setPromoBusy(false);
     }
-  };
+  }, [onApplyPromo, promoInput, onPromoMessage, showPromoInput]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -131,253 +126,39 @@ export default function CartScreen({
         <BrandHeaderAccent kicker="ЗАКАЗ" />
         <Text style={[styles.title, { color: colors.text }]}>Корзина</Text>
       </View>
-      <FlatList
-        data={cartData}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.list, { paddingBottom: spacing['2xl'] }]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        nestedScrollEnabled
-        ListEmptyComponent={<Text style={[styles.empty, { color: colors.textMuted }]}>Корзина пуста</Text>}
-        renderItem={({ item }) => (
-          <View style={[styles.item, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <DishImage uri={item.imageUrl} title={item.title} style={styles.image} borderRadius={borderRadius.md} />
-            <View style={styles.center}>
-              <Text style={[styles.name, { color: colors.text }]}>{item.title}</Text>
-              <Text style={[styles.price, { color: colors.textLight }]}>{item.price} руб</Text>
-            </View>
-            <View style={styles.counter}>
-              <TouchableOpacity onPress={() => onChangeQty(item.id, -1)}>
-                <Text style={[styles.control, { color: colors.text }]}>−</Text>
-              </TouchableOpacity>
-              <Text style={[styles.qty, { color: colors.text }]}>{item.quantity}</Text>
-              <TouchableOpacity onPress={() => onChangeQty(item.id, 1)}>
-                <Text style={[styles.control, { color: colors.text }]}>＋</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+      <CartItemsList styles={styles} colors={colors} cartData={cartData} onChangeQty={onChangeQty} />
+      <CartFooterSection
+        styles={styles}
+        colors={colors}
+        isWide={isWide}
+        isCompact={isCompact}
+        total={total}
+        orderType={orderType}
+        setOrderType={setOrderType}
+        showPromoInput={showPromoInput}
+        promoInput={promoInput}
+        setPromoInput={setPromoInput}
+        promoBusy={promoBusy}
+        handleApplyPromo={handleApplyPromo}
+        appliedPromo={appliedPromo}
+        onClearPromo={onClearPromo}
+        usePoints={usePoints}
+        setUsePoints={setUsePoints}
+        pointsInput={pointsInput}
+        setPointsInput={setPointsInput}
+        maxPointsAllowed={maxPointsAllowed}
+        loyaltyPoints={loyaltyPoints}
+        showLoyaltyIntegrations={showLoyaltyIntegrations}
+          promoRub={promoRub}
+          guestDiscountRub={guestDiscountRub}
+          guestDiscountPercentage={guestDiscountPercentage}
+          pointsDiscountRub={pointsDiscountRub}
+          payable={payable}
+        recommended={recommended}
+        onAddToCart={onAddToCart}
+        cartItemsLength={cartItems.length}
+        handleCheckout={handleCheckout}
       />
-      <View
-        style={[
-          styles.footer,
-          isWide ? styles.footerWide : null,
-          { backgroundColor: colors.card, borderTopColor: colors.border },
-        ]}
-      >
-        <ScrollView
-          style={styles.footerScroll}
-          contentContainerStyle={styles.footerScrollContent}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={[styles.total, { color: colors.text }]}>Итого: {total} руб.</Text>
-          <View style={[styles.typeRow, isCompact ? styles.typeRowCompact : null]}>
-            {[
-              { id: 'booking', label: 'Бронь' },
-              { id: 'pickup', label: 'Самовывоз' },
-              { id: 'delivery', label: 'Доставка' },
-            ].map((type) => (
-              <TouchableOpacity
-                key={type.id}
-                onPress={() => setOrderType(type.id)}
-                style={[
-                  styles.chip,
-                  isCompact ? styles.chipCompact : null,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: orderType === type.id ? colors.primary : colors.background,
-                  },
-                ]}
-              >
-                <Text numberOfLines={1} style={{ color: orderType === type.id ? colors.black : colors.text, fontSize: isCompact ? 12 : 14 }}>
-                  {type.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {orderType === 'delivery' ? (
-            <View style={styles.deliveryWrap}>
-              <TextInput
-                value={deliveryCity}
-                onChangeText={setDeliveryCity}
-                placeholder="Город"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.addressInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              />
-              <TextInput
-                value={deliveryAddress}
-                onChangeText={setDeliveryAddress}
-                placeholder="Улица"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.addressInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              />
-              <TextInput
-                value={deliveryHouse}
-                onChangeText={setDeliveryHouse}
-                placeholder="Дом"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.addressInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              />
-              <TextInput
-                value={deliveryEntrance}
-                onChangeText={setDeliveryEntrance}
-                placeholder="Подъезд"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.addressInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              />
-              <TextInput
-                value={deliveryIntercom}
-                onChangeText={setDeliveryIntercom}
-                placeholder="Домофон"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.addressInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              />
-              <TextInput
-                value={deliveryApartment}
-                onChangeText={setDeliveryApartment}
-                placeholder="Квартира"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.addressInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              />
-              <TouchableOpacity
-                onPress={() => setLeaveAtDoor((prev) => !prev)}
-                style={[styles.pointsToggle, { borderColor: colors.border, backgroundColor: colors.background }]}
-              >
-                <Text style={{ color: colors.text }}>
-                  {leaveAtDoor ? 'Оставить у двери: да' : 'Оставить у двери: нет'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-          {showLoyaltyIntegrations ? (
-            <View style={styles.promoBlock}>
-              <Text style={[styles.promoTitle, { color: colors.text }]}>Промокод</Text>
-              <Text style={[styles.promoHint, { color: colors.textMuted }]}>
-                После применения промокода скидка отобразится в блоке «Итого» ниже.
-              </Text>
-              <View style={styles.promoRow}>
-                <TextInput
-                  value={promoInput}
-                  onChangeText={setPromoInput}
-                  placeholder="Код"
-                  placeholderTextColor={colors.textMuted}
-                  autoCapitalize="characters"
-                  style={[
-                    styles.promoInput,
-                    { borderColor: colors.border, color: colors.text, backgroundColor: colors.background },
-                  ]}
-                />
-                <TouchableOpacity
-                  onPress={handleApplyPromo}
-                  disabled={promoBusy || !promoInput.trim()}
-                  style={[
-                    styles.promoBtn,
-                    { backgroundColor: promoBusy || !promoInput.trim() ? colors.textMuted : colors.primary },
-                  ]}
-                >
-                  <Text style={{ color: colors.black, fontWeight: '700' }}>{promoBusy ? '…' : 'Применить'}</Text>
-                </TouchableOpacity>
-              </View>
-              {appliedPromo ? (
-                <View style={[styles.appliedPromo, { borderColor: colors.border }]}>
-                  <Text style={{ color: colors.text, flex: 1 }}>
-                    {appliedPromo.code}: {appliedPromo.isPercentage ? `${appliedPromo.discountValue}%` : `${appliedPromo.discountValue} руб.`}
-                  </Text>
-                  <TouchableOpacity onPress={() => onClearPromo?.()}>
-                    <Text style={{ color: colors.error, fontWeight: '600' }}>Сбросить</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-          <View style={styles.pointsRow}>
-            <TouchableOpacity
-              onPress={() => setUsePoints((prev) => !prev)}
-              style={[styles.pointsToggle, { borderColor: colors.border, backgroundColor: colors.background }]}
-            >
-              <Text style={{ color: colors.text }}>
-                {usePoints ? 'Списание баллов: включено' : 'Списание баллов: выключено'}
-              </Text>
-            </TouchableOpacity>
-            {usePoints ? (
-              <TextInput
-                value={String(pointsInput)}
-                onChangeText={setPointsInput}
-                keyboardType="numeric"
-                placeholder={`до ${maxPointsAllowed}`}
-                placeholderTextColor={colors.textMuted}
-                style={[styles.pointsInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              />
-            ) : null}
-            <Text style={[styles.pointsHint, { color: colors.textLight }]}>
-              Доступно: {loyaltyPoints} • Максимум к списанию: {maxPointsAllowed}
-            </Text>
-            {showLoyaltyIntegrations ? (
-              <Text style={[styles.pointsHint, { color: colors.textMuted, marginTop: spacing.xs }]}>
-                После нажатия «Оформить заказ» баллы спишутся автоматически — номер заказа указывать не нужно.
-              </Text>
-            ) : null}
-          </View>
-          <View style={[styles.summaryCard, { borderColor: colors.border, backgroundColor: colors.background }]}>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.textLight }]}>Сумма заказа</Text>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>{total} руб.</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.textLight }]}>Промокод</Text>
-              <Text style={[styles.summaryValue, { color: colors.success }]}>−{promoRub.toFixed(2)} руб.</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.textLight }]}>Списание баллов</Text>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>
-                {usePoints ? `${pointsDiscountRub} баллов` : 'Не используется'}
-              </Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.textLight }]}>Скидка баллами</Text>
-              <Text style={[styles.summaryValue, { color: colors.success }]}>−{pointsDiscountRub.toFixed(2)} руб.</Text>
-            </View>
-            <View style={[styles.summaryRow, styles.summaryTotalRow]}>
-              <Text style={[styles.summaryTotalLabel, { color: colors.text }]}>К оплате</Text>
-              <Text style={[styles.summaryTotalValue, { color: colors.text }]}>{payable.toFixed(2)} руб.</Text>
-            </View>
-          </View>
-          {recommended.length ? (
-            <View style={styles.recoBlock}>
-              <Text style={[styles.recoTitle, { color: colors.text }]}>Рекомендуем к заказу</Text>
-              {recommended.map((item) => (
-                <View key={item.id} style={[styles.recoRow, { borderColor: colors.border }]}>
-                  <Text style={[styles.recoName, { color: colors.text }]}>{item.title}</Text>
-                  <TouchableOpacity
-                    onPress={() => onAddToCart?.(item.id, 1)}
-                    style={[styles.recoBtn, { backgroundColor: colors.primary }]}
-                  >
-                    <Text style={{ color: colors.black }}>Добавить</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          ) : null}
-          <TouchableOpacity
-            onPress={handleCheckout}
-            disabled={!cartItems.length}
-            style={[
-              styles.button,
-              {
-                backgroundColor: cartItems.length ? colors.primary : colors.textMuted,
-                borderColor: colors.border,
-                borderWidth: StyleSheet.hairlineWidth,
-                opacity: cartItems.length ? 1 : 0.85,
-              },
-            ]}
-          >
-            <Text style={[styles.buttonText, { color: cartItems.length ? colors.black : colors.white }]}>Оформить заказ</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
     </SafeAreaView>
   );
 }
@@ -444,15 +225,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   chipCompact: { paddingHorizontal: 10, minHeight: 32 },
-  addressInput: {
-    marginTop: spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
   pointsRow: { marginTop: spacing.sm, gap: spacing.sm },
-  deliveryWrap: { marginTop: spacing.sm, gap: spacing.xs },
   pointsToggle: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: borderRadius.md,

@@ -67,7 +67,7 @@ export default function BookingsHistoryScreen({ bookings = [], onBack, onOpenBoo
               {item.date} в {item.time}
             </Text>
             <Text style={[styles.cardText, { color: colors.textLight }]}>
-              Гостей: {item.people} • Адрес: {item.address || 'не указан'}
+              Гостей: {item.people != null ? item.people : '—'} • Адрес: {item.address || '—'}
             </Text>
             <Text style={[styles.cardText, { color: colors.textLight }]}>
               Статус:{' '}

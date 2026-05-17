@@ -16,6 +16,15 @@ function normTitle(s) {
 
 const dishImageByTitle = new Map(catalogDishes.map((d) => [normTitle(d.title), d.imageUrl]));
 
+function allowCatalogImageFallback() {
+  // For real SyncFlow backend we should trust server media only.
+  // Local catalog fallbacks are kept only for mock/local scenarios.
+  if (runtimeConfig.integratedBackend === 'syncflow' && !runtimeConfig.useMockApi) {
+    return false;
+  }
+  return true;
+}
+
 /** Если в БД нет URL и название не совпало с каталогом — берём Unsplash из каталога по стабильному индексу (единый стиль). */
 function catalogImageByStableIndex(dish) {
   if (!catalogDishes.length) return '';
@@ -38,6 +47,29 @@ function coerceImageUrlInput(url) {
   }
   if (typeof url === 'number' && Number.isFinite(url)) return String(url);
   return '';
+}
+
+function googleDriveDirectUrl(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    if (!/^(drive|docs)\.google\.com$/i.test(u.hostname)) return null;
+
+    let fileId = '';
+    const byQuery = String(u.searchParams.get('id') || '').trim();
+    if (byQuery) fileId = byQuery;
+
+    if (!fileId) {
+      const match = u.pathname.match(/\/file\/d\/([^/]+)/i);
+      if (match?.[1]) {
+        fileId = String(match[1]).trim();
+      }
+    }
+
+    if (!fileId) return null;
+    return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`;
+  } catch {
+    return null;
+  }
 }
 
 function currentApiOriginParts() {
@@ -131,6 +163,8 @@ export function resolveMediaUrl(url) {
   };
 
   if (/^https?:\/\//i.test(raw)) {
+    const gdrive = googleDriveDirectUrl(raw);
+    if (gdrive) return gdrive;
     const rebound = rewriteOurHostedAbsoluteUrl(raw);
     return tryRewriteLocalhost(rebound);
   }
@@ -150,7 +184,7 @@ export function resolveMediaUrl(url) {
 
 /**
  * Подмена внешних URL на прокси через ваш API (тот же хост, что и /menu).
- * Иначе с телефона images.unsplash.com часто недоступен → onError и плейсхолдер с инициалами.
+ * Иначе с мобильной сети images.unsplash.com часто недоступен → onError и плейсхолдер с инициалами.
  */
 function clientLoadableImageUrl(absoluteUrl) {
   const u = coerceImageUrlInput(absoluteUrl);
@@ -176,11 +210,11 @@ function clientLoadableImageUrl(absoluteUrl) {
 function finalDishImageUrl(dish) {
   const raw = dish.imageUrl ?? dish.image_url ?? dish.photo ?? dish.picture ?? dish.image;
   let u = resolveMediaUrl(raw);
-  if (!u) {
+  if (!u && allowCatalogImageFallback()) {
     const cat = dishImageByTitle.get(normTitle(dish.title ?? dish.name));
     if (cat) u = resolveMediaUrl(cat);
   }
-  if (!u) u = catalogImageByStableIndex(dish);
+  if (!u && allowCatalogImageFallback()) u = catalogImageByStableIndex(dish);
   return clientLoadableImageUrl(u);
 }
 

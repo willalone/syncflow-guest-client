@@ -5,7 +5,6 @@ import {
   Easing,
   Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -20,14 +19,17 @@ import { borderRadius, getColors, spacing, typography, fontFamily } from '../con
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { runtimeConfig } from '../config/runtimeConfig';
-import { applyPhoneMask, isValidEmail } from '../utils/inputMasks';
+import { applyPhoneMask, isValidEmailForSyncflow, normalizeEmailForApi } from '../utils/inputMasks';
+import { usePasswordRecovery } from '../hooks/usePasswordRecovery';
 import BrandHeaderAccent from '../components/BrandHeaderAccent';
 import AuthAtmosphereBackground from '../components/AuthAtmosphereBackground';
 import { CLIENT_APP_TITLE, CLIENT_BRAND_KICKER } from '../constants/venue';
+import AuthModeSegment from './auth/AuthModeSegment';
+import PasswordRecoveryModal from './auth/PasswordRecoveryModal';
 
 const isSyncflowBackend = runtimeConfig.integratedBackend === 'syncflow';
 
-export default function AuthScreen() {
+export default function AuthScreen({ onBackToMenu }) {
   const { isDarkMode } = useTheme();
   const colors = getColors(isDarkMode);
   const { signIn, signUp, authError, setAuthError, requestPasswordRecovery, confirmPasswordRecovery } = useAuth();
@@ -42,15 +44,15 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [forgotVisible, setForgotVisible] = useState(false);
-  const [recoveryEmail, setRecoveryEmail] = useState('');
-  const [recoveryCode, setRecoveryCode] = useState('');
-  const [recoveryPassword, setRecoveryPassword] = useState('');
-  const [recoveryConfirmPassword, setRecoveryConfirmPassword] = useState('');
-  const [recoveryLoading, setRecoveryLoading] = useState(false);
-  const [recoveryStage, setRecoveryStage] = useState('request');
-  const [recoveryError, setRecoveryError] = useState('');
-  const [recoverySuccess, setRecoverySuccess] = useState('');
+
+  const recovery = usePasswordRecovery({
+    requestPasswordRecovery,
+    confirmPasswordRecovery,
+    onLoginPasswordsCleared: () => {
+      setPassword('');
+      setConfirmPassword('');
+    },
+  });
 
   const pillX = useRef(new Animated.Value(0)).current;
   const [segmentHalf, setSegmentHalf] = useState(0);
@@ -91,97 +93,6 @@ export default function AuthScreen() {
   const blurTint = isDarkMode ? 'dark' : 'light';
   const blurIntensity = Platform.OS === 'ios' ? 48 : 36;
 
-  const resetRecoveryModal = () => {
-    setRecoveryEmail('');
-    setRecoveryCode('');
-    setRecoveryPassword('');
-    setRecoveryConfirmPassword('');
-    setRecoveryError('');
-    setRecoverySuccess('');
-    setRecoveryStage('request');
-    setRecoveryLoading(false);
-  };
-
-  const openForgotModal = () => {
-    setRecoveryEmail(email.trim());
-    setRecoveryCode('');
-    setRecoveryPassword('');
-    setRecoveryConfirmPassword('');
-    setRecoveryError('');
-    setRecoverySuccess('');
-    setRecoveryStage('request');
-    setForgotVisible(true);
-  };
-
-  const closeForgotModal = () => {
-    setForgotVisible(false);
-    resetRecoveryModal();
-  };
-
-  const generateRecoveryCode = () => String(Math.floor(1000 + Math.random() * 9000));
-
-  const requestRecoveryCode = async () => {
-    const nextEmail = recoveryEmail.trim().toLowerCase();
-    if (!isValidEmail(nextEmail)) {
-      setRecoveryError('Введите корректный email (обязателен символ @).');
-      return;
-    }
-    try {
-      setRecoveryLoading(true);
-      setRecoveryError('');
-      setRecoverySuccess('');
-      const code = generateRecoveryCode();
-      await requestPasswordRecovery({ email: nextEmail, code });
-      setRecoveryCode('');
-      setRecoveryStage('verify');
-      setRecoverySuccess('Код из 4 цифр отправлен на почту.');
-    } catch (error) {
-      setRecoveryError(error.message || 'Не удалось отправить код. Попробуйте позже.');
-    } finally {
-      setRecoveryLoading(false);
-    }
-  };
-
-  const submitRecovery = async () => {
-    const nextEmail = recoveryEmail.trim().toLowerCase();
-    if (!isValidEmail(nextEmail)) {
-      setRecoveryError('Введите корректный email (обязателен символ @).');
-      return;
-    }
-    if (!/^\d{4}$/.test(recoveryCode)) {
-      setRecoveryError('Введите 4-значный код из письма.');
-      return;
-    }
-    if (!recoveryPassword || recoveryPassword.length < 4) {
-      setRecoveryError('Новый пароль должен содержать минимум 4 символа.');
-      return;
-    }
-    if (recoveryPassword !== recoveryConfirmPassword) {
-      setRecoveryError('Пароли не совпадают.');
-      return;
-    }
-    try {
-      setRecoveryLoading(true);
-      setRecoveryError('');
-      setRecoverySuccess('');
-      await confirmPasswordRecovery({
-        email: nextEmail,
-        code: recoveryCode,
-        newPassword: recoveryPassword,
-      });
-      setRecoverySuccess('Пароль обновлен. Теперь можно войти.');
-      setPassword('');
-      setConfirmPassword('');
-      setTimeout(() => {
-        closeForgotModal();
-      }, 700);
-    } catch (error) {
-      setRecoveryError(error.message || 'Не удалось восстановить пароль.');
-    } finally {
-      setRecoveryLoading(false);
-    }
-  };
-
   const submit = async () => {
     try {
       setLoading(true);
@@ -200,15 +111,17 @@ export default function AuthScreen() {
           if (!login.trim()) {
             throw new Error('Укажите логин');
           }
-          if (email.trim() && !isValidEmail(email.trim())) {
-            throw new Error('Введите корректный email (обязателен символ @).');
+          if (email.trim() && !isValidEmailForSyncflow(email)) {
+            throw new Error(
+              'Введите email латиницей (как на сервере). Уберите лишние пробелы и скрытые символы после копирования.',
+            );
           }
           await signUp({
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             login: login.trim(),
             password,
-            email: email.trim() ? email.trim().toLowerCase() : undefined,
+            email: email.trim() ? normalizeEmailForApi(email) : undefined,
           });
         } else {
           if (!login.trim()) {
@@ -218,7 +131,7 @@ export default function AuthScreen() {
         }
       } else {
         if (String(phone).replace(/\D/g, '').length < 11) {
-          throw new Error('Введите полный номер телефона');
+          throw new Error('Введите логин полностью');
         }
         if (isRegisterMode) {
           if (password !== confirmPassword) {
@@ -251,6 +164,11 @@ export default function AuthScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
+            {typeof onBackToMenu === 'function' ? (
+              <TouchableOpacity onPress={onBackToMenu} style={styles.backToMenuBtn} activeOpacity={0.85}>
+                <Text style={[styles.backToMenuText, { color: colors.textLight }]}>← Вернуться к меню</Text>
+              </TouchableOpacity>
+            ) : null}
             <BrandHeaderAccent kicker={CLIENT_BRAND_KICKER} />
 
             <View style={styles.hero}>
@@ -276,70 +194,22 @@ export default function AuthScreen() {
                     },
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.segment,
-                      {
-                        backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(42, 36, 58, 0.08)',
-                      },
-                    ]}
-                    onLayout={(e) => {
+                  <AuthModeSegment
+                    styles={styles}
+                    colors={colors}
+                    fontFamily={fontFamily}
+                    segmentHalf={segmentHalf}
+                    pillX={pillX}
+                    isRegisterMode={isRegisterMode}
+                    setIsRegisterMode={setIsRegisterMode}
+                    setAuthError={setAuthError}
+                    onSegmentLayout={(e) => {
                       const w = e.nativeEvent.layout.width;
                       const inset = 3;
                       const inner = Math.max(0, w - inset * 2);
                       setSegmentHalf(inner / 2);
                     }}
-                  >
-                    <Animated.View
-                      style={[
-                        styles.segmentPill,
-                        { backgroundColor: colors.primary },
-                        segmentHalf > 0
-                          ? { width: segmentHalf, opacity: 1, transform: [{ translateX: pillX }] }
-                          : { width: 0, opacity: 0 },
-                      ]}
-                    />
-                    <TouchableOpacity
-                      style={styles.segmentBtn}
-                      onPress={() => {
-                        setIsRegisterMode(false);
-                        setAuthError('');
-                      }}
-                      activeOpacity={0.9}
-                    >
-                      <Text
-                        style={[
-                          styles.segmentLabel,
-                          {
-                            color: !isRegisterMode ? colors.black : colors.textLight,
-                            fontFamily: !isRegisterMode ? fontFamily.sansBold : fontFamily.sansMedium,
-                          },
-                        ]}
-                      >
-                        Вход
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.segmentBtn}
-                      onPress={() => {
-                        setIsRegisterMode(true);
-                        setAuthError('');
-                      }}
-                      activeOpacity={0.9}
-                    >
-                      <Text
-                        style={[
-                          styles.segmentLabel,
-                          {
-                            color: isRegisterMode ? colors.black : colors.textLight,
-                            fontFamily: isRegisterMode ? fontFamily.sansBold : fontFamily.sansMedium,
-                          },
-                        ]}
-                      >
-                        Регистрация
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  />
 
                   {isRegisterMode && !isSyncflowBackend && (
                     <TextInput
@@ -421,9 +291,9 @@ export default function AuthScreen() {
                       ]}
                       value={phone}
                       onChangeText={(value) => setPhone(applyPhoneMask(value))}
-                      placeholder={isSyncflowBackend ? 'Телефон (необязательно)' : '+7 999 123-45-67'}
+                      placeholder="Логин"
                       placeholderTextColor={colors.textMuted}
-                      keyboardType="phone-pad"
+                      keyboardType="default"
                     />
                   )}
                   {isSyncflowBackend && isRegisterMode ? (
@@ -463,7 +333,11 @@ export default function AuthScreen() {
                     autoComplete="password"
                   />
                   {isSyncflowBackend && !isRegisterMode ? (
-                    <TouchableOpacity onPress={openForgotModal} activeOpacity={0.8} style={styles.forgotBtn}>
+                    <TouchableOpacity
+                      onPress={() => recovery.openWithEmailHint(email)}
+                      activeOpacity={0.8}
+                      style={styles.forgotBtn}
+                    >
                       <Text style={[styles.forgotText, { color: colors.primary }]}>Забыли пароль?</Text>
                     </TouchableOpacity>
                   ) : null}
@@ -509,138 +383,30 @@ export default function AuthScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
-      <Modal visible={forgotVisible} transparent animationType="fade" onRequestClose={closeForgotModal}>
-        <View style={styles.modalOverlay}>
-          <BlurView
-            intensity={blurIntensity}
-            tint={blurTint}
-            experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-            style={[styles.recoveryModal, { borderColor: colors.hairline }]}
-          >
-            <View
-              style={[
-                styles.recoveryInner,
-                { backgroundColor: isDarkMode ? 'rgba(38, 32, 46, 0.6)' : 'rgba(255, 255, 255, 0.72)' },
-              ]}
-            >
-              <Text style={[styles.recoveryTitle, { color: colors.text }]}>Восстановление пароля</Text>
-              <Text style={[styles.recoveryHint, { color: colors.textMuted }]}>
-                Введите email, получите 4-значный код и задайте новый пароль.
-              </Text>
-
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    borderColor: colors.hairline,
-                    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.72)',
-                    color: colors.text,
-                  },
-                ]}
-                value={recoveryEmail}
-                onChangeText={setRecoveryEmail}
-                placeholder="Email"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-
-              {recoveryStage === 'verify' ? (
-                <>
-                  <TextInput
-                    style={styles.hiddenCodeInput}
-                    value={recoveryCode}
-                    onChangeText={(value) => setRecoveryCode(String(value || '').replace(/\D/g, '').slice(0, 4))}
-                    keyboardType="number-pad"
-                    maxLength={4}
-                    autoFocus
-                  />
-                  <TouchableOpacity activeOpacity={1} onPress={() => null} style={styles.codeRow}>
-                    {Array.from({ length: 4 }).map((_, index) => (
-                      <View
-                        key={`recovery-code-${index}`}
-                        style={[
-                          styles.codeCell,
-                          {
-                            borderColor: colors.hairline,
-                            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.72)',
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.codeDigit, { color: colors.text }]}>{recoveryCode[index] || ''}</Text>
-                      </View>
-                    ))}
-                  </TouchableOpacity>
-
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        borderColor: colors.hairline,
-                        backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.72)',
-                        color: colors.text,
-                      },
-                    ]}
-                    value={recoveryPassword}
-                    onChangeText={setRecoveryPassword}
-                    placeholder="Новый пароль"
-                    secureTextEntry
-                    placeholderTextColor={colors.textMuted}
-                    textContentType="newPassword"
-                  />
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        borderColor: colors.hairline,
-                        backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.72)',
-                        color: colors.text,
-                      },
-                    ]}
-                    value={recoveryConfirmPassword}
-                    onChangeText={setRecoveryConfirmPassword}
-                    placeholder="Подтвердите новый пароль"
-                    secureTextEntry
-                    placeholderTextColor={colors.textMuted}
-                    textContentType="newPassword"
-                  />
-                </>
-              ) : null}
-
-              {Boolean(recoveryError) ? <Text style={[styles.error, { color: colors.error }]}>{recoveryError}</Text> : null}
-              {Boolean(recoverySuccess) ? (
-                <Text style={[styles.recoverySuccess, { color: colors.success }]}>{recoverySuccess}</Text>
-              ) : null}
-
-              <View style={styles.recoveryActions}>
-                <TouchableOpacity
-                  onPress={closeForgotModal}
-                  activeOpacity={0.9}
-                  style={[styles.modalBtnGhost, { borderColor: colors.hairline }]}
-                  disabled={recoveryLoading}
-                >
-                  <Text style={[styles.modalBtnText, { color: colors.text }]}>Отмена</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={recoveryStage === 'request' ? requestRecoveryCode : submitRecovery}
-                  activeOpacity={0.92}
-                  style={[styles.modalBtnPrimary, { backgroundColor: colors.primary }]}
-                  disabled={recoveryLoading}
-                >
-                  {recoveryLoading ? (
-                    <ActivityIndicator color={colors.black} />
-                  ) : (
-                    <Text style={[styles.modalBtnText, { color: colors.black }]}>
-                      {recoveryStage === 'request' ? 'Отправить код' : 'Обновить пароль'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </BlurView>
-        </View>
-      </Modal>
+      <PasswordRecoveryModal
+        visible={recovery.forgotVisible}
+        blurIntensity={blurIntensity}
+        blurTint={blurTint}
+        isDarkMode={isDarkMode}
+        Platform={Platform}
+        styles={styles}
+        colors={colors}
+        recoveryEmail={recovery.recoveryEmail}
+        setRecoveryEmail={recovery.setRecoveryEmail}
+        recoveryStage={recovery.recoveryStage}
+        recoveryCode={recovery.recoveryCode}
+        setRecoveryCode={recovery.setRecoveryCode}
+        recoveryPassword={recovery.recoveryPassword}
+        setRecoveryPassword={recovery.setRecoveryPassword}
+        recoveryConfirmPassword={recovery.recoveryConfirmPassword}
+        setRecoveryConfirmPassword={recovery.setRecoveryConfirmPassword}
+        recoveryError={recovery.recoveryError}
+        recoverySuccess={recovery.recoverySuccess}
+        recoveryLoading={recovery.recoveryLoading}
+        closeForgotModal={recovery.closeForgotModal}
+        requestRecoveryCode={recovery.requestRecoveryCode}
+        submitRecovery={recovery.submitRecovery}
+      />
     </View>
   );
 }
@@ -658,6 +424,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing['2xl'],
     paddingTop: spacing.sm,
+  },
+  backToMenuBtn: {
+    alignSelf: 'flex-start',
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  backToMenuText: {
+    ...typography.caption,
+    fontFamily: fontFamily.sansMedium,
   },
   hero: {
     alignItems: 'center',

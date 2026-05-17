@@ -76,14 +76,6 @@ export default function BookingDetailScreen({ bookingId, initial, onBack, fetchB
                 <Text style={[styles.rowValue, { color: colors.text }]}>{raw?.guestName || b?.guestName}</Text>
               </>
             )}
-            {(b?.guestPhoneNumber || raw?.guestPhoneNumber) && (
-              <>
-                <Text style={[styles.rowLabel, { color: colors.textMuted, marginTop: spacing.sm }]}>Телефон</Text>
-                <Text style={[styles.rowValue, { color: colors.text }]}>
-                  {raw?.guestPhoneNumber || b?.guestPhoneNumber}
-                </Text>
-              </>
-            )}
             <Text style={[styles.hint, { color: colors.textLight, marginTop: spacing.md }]}>
               Информация обновляется при открытии экрана.
             </Text>

@@ -1,7 +1,8 @@
-import { getMenu, signIn } from './mockApi';
+import { getMenu, signIn, signUp } from './mockApi';
 
 describe('mock api', () => {
   test('returns token and user after sign in', async () => {
+    await signUp({ name: 'Тест', phone: '+7 999 000-00-00', password: '1234' });
     const session = await signIn({ phone: '+7 999 000-00-00', password: '1234' });
     expect(session.token).toBeTruthy();
     expect(session.user.name).toBeTruthy();

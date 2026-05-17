@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import * as authApi from '../services/api/authApi';
+import * as clientApi from '../services/api/clientApi';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { readAuthSession, writeAuthSession } from '../services/authSessionStorage';
 
@@ -72,6 +73,14 @@ export function AuthProvider({ children }) {
   };
 
   const signOut = async () => {
+    try {
+      const pushToken = String(session?.pushDeviceToken || '').trim();
+      if (pushToken) {
+        await clientApi.unregisterPushDevice(pushToken);
+      }
+    } catch {
+      // no-op: logout must continue even if token cleanup failed
+    }
     setSession(null);
     await writeAuthSession(null);
   };
@@ -101,14 +110,22 @@ export function AuthProvider({ children }) {
     return true;
   };
 
-  const requestPasswordRecovery = async ({ email, code }) => {
+  /** Подтянуть сессию из хранилища (например после PATCH /guest/profile, который обновляет user в AsyncStorage). */
+  const refreshSessionFromStorage = useCallback(async () => {
+    const stored = await readAuthSession();
+    if (stored) {
+      setSession(normalizeSession(stored));
+    }
+  }, []);
+
+  const requestPasswordRecovery = async ({ email, signal }) => {
     setAuthError('');
-    return authApi.requestPasswordRecovery({ email, code });
+    return authApi.requestPasswordRecovery({ email, signal });
   };
 
-  const confirmPasswordRecovery = async ({ email, code, newPassword }) => {
+  const confirmPasswordRecovery = async ({ email, code, newPassword, signal }) => {
     setAuthError('');
-    return authApi.confirmPasswordRecovery({ email, code, newPassword });
+    return authApi.confirmPasswordRecovery({ email, code, newPassword, signal });
   };
 
   const value = useMemo(
@@ -124,11 +141,12 @@ export function AuthProvider({ children }) {
       signOut,
       updateAccount,
       deleteAccount,
+      refreshSessionFromStorage,
       requestPasswordRecovery,
       confirmPasswordRecovery,
       isAuthenticated: Boolean(session?.accessToken || session?.token),
     }),
-    [session, isLoadingSession, authError]
+    [session, isLoadingSession, authError, refreshSessionFromStorage]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

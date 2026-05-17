@@ -1,4 +1,7 @@
-import { syncflowPublicRequest } from '../syncflowHttp';
+import { normalizeEmailForApi } from '../../utils/inputMasks';
+import { logger } from '../../utils/logger';
+import { readAuthSession, writeAuthSession } from '../authSessionStorage';
+import { apiBase, syncflowGuestRequest, syncflowPublicRequest } from '../syncflowHttp';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -126,24 +129,76 @@ export async function signUp({
   };
 }
 
-export function updateAccount() {
-  return Promise.resolve(null);
+export async function updateAccount(_userId, patch) {
+  const payload = {};
+  if (patch?.firstName != null) payload.firstName = String(patch.firstName);
+  if (patch?.lastName != null) payload.lastName = String(patch.lastName);
+  if (patch?.email != null) payload.email = String(patch.email);
+  if (patch?.phoneNumber != null) payload.phoneNumber = String(patch.phoneNumber);
+  if (patch?.login != null) payload.login = String(patch.login);
+  await syncflowGuestRequest('/guest/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  const profile = await syncflowGuestRequest('/guest/profile');
+  const session = await readAuthSession();
+  const currentUser = session?.user || {};
+  const nextUser = {
+    ...currentUser,
+    id: profile?.id != null ? String(profile.id) : currentUser.id,
+    firstName: profile?.firstName ?? currentUser.firstName,
+    lastName: profile?.lastName ?? currentUser.lastName,
+    login: profile?.login ?? currentUser.login,
+    email: profile?.email ?? currentUser.email,
+    phoneNumber: profile?.phoneNumber ?? currentUser.phoneNumber,
+  };
+  if (session) await writeAuthSession({ ...session, user: nextUser });
+  return nextUser;
 }
 
 export async function deleteAccount() {
-  throw new Error('Удаление аккаунта в приложении недоступно. Обратитесь в ресторан.');
+  await syncflowGuestRequest('/guest/profile', {
+    method: 'DELETE',
+    body: JSON.stringify({}),
+  });
+  return true;
 }
 
-export async function requestPasswordRecovery({ email, code }) {
-  return syncflowPublicRequest('/guest/auth/recovery/request', {
+/** Долгий лимит: бэкенд часто синхронно шлёт письмо по SMTP. Без автоповтора — не ждём второй такой же таймаут подряд. */
+/** SMTP на бэкенде часто дольше 45 с; коллеги с Postman ждут ответ сервера, приложение обрывало раньше. */
+const RECOVERY_TIMEOUT_MS = 120000;
+const RECOVERY_NETWORK_RETRIES = 0;
+
+/**
+ * API_DOCS §2.6 шаг 1 — сервер генерирует 6-значный код и шлёт письмо по SMTP.
+ * Клиент ждёт HTTP 200; только после этого показываем шаг ввода кода.
+ */
+export async function requestPasswordRecovery({ email, signal } = {}) {
+  const normalizedEmail = normalizeEmailForApi(email);
+  if (__DEV__) {
+    logger.warn('[recovery] POST', `${apiBase()}/guest/auth/reset-password/request`, { email: normalizedEmail });
+  }
+  return syncflowPublicRequest('/guest/auth/reset-password/request', {
     method: 'POST',
-    body: JSON.stringify({ email, code }),
+    body: JSON.stringify({ email: normalizedEmail }),
+    timeoutMs: RECOVERY_TIMEOUT_MS,
+    networkRetries: RECOVERY_NETWORK_RETRIES,
+    signal,
   });
 }
 
-export async function confirmPasswordRecovery({ email, code, newPassword }) {
-  return syncflowPublicRequest('/guest/auth/recovery/confirm', {
+/** API_DOCS §2.6 шаг 2 — подтверждение кода и смена пароля. */
+export async function confirmPasswordRecovery({ email, code, newPassword, signal } = {}) {
+  const normalizedEmail = normalizeEmailForApi(email);
+  return syncflowPublicRequest('/guest/auth/reset-password/confirm', {
     method: 'POST',
-    body: JSON.stringify({ email, code, newPassword }),
+    body: JSON.stringify({
+      email: normalizedEmail,
+      code: String(code || '').trim(),
+      newPassword: String(newPassword || ''),
+    }),
+    timeoutMs: RECOVERY_TIMEOUT_MS,
+    networkRetries: RECOVERY_NETWORK_RETRIES,
+    signal,
   });
 }

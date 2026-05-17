@@ -1,17 +1,51 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { borderRadius, getColors, spacing, typography } from '../constants/theme';
 import BrandHeaderAccent from '../components/BrandHeaderAccent';
 import { useTheme } from '../contexts/ThemeContext';
-import DishImage from '../components/DishImage';
-import { applyDateMask, applyTimeMask, isValidDateMask, isValidTimeMask } from '../utils/inputMasks';
+import { applyDateMask, isValidDateMask, isValidTimeMask } from '../utils/inputMasks';
 import { DEFAULT_VENUE_LABEL } from '../constants/venue';
+import BookingFormSection from './booking/BookingFormSection';
+import BookingPreorderSection from './booking/BookingPreorderSection';
+import BookingTablesSection from './booking/BookingTablesSection';
+
+function addTwoHoursHm(timeHm) {
+  const [hRaw = '0', mRaw = '0'] = String(timeHm || '00:00').split(':');
+  const startMin = Number(hRaw) * 60 + Number(mRaw);
+  const endMin = startMin + 120;
+  const endH = Math.floor(endMin / 60) % 24;
+  const endM = endMin % 60;
+  return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+}
+
+function parseBookingDateTime(dateValue, timeValue) {
+  const [dd, mm, yyyy] = String(dateValue || '').split('.');
+  const [hh, min] = String(timeValue || '').split(':');
+  const day = Number(dd);
+  const month = Number(mm);
+  const year = Number(yyyy);
+  const hours = Number(hh);
+  const minutes = Number(min);
+  if (
+    !Number.isFinite(day) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(year) ||
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes)
+  ) {
+    return null;
+  }
+  const parsed = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
 
 export default function BookingScreen({
   tables = [],
   onSubmitBooking,
+  onRequestAvailableTables,
   cartItems = [],
   dishes = [],
   onGoToMenuForPreorder,
@@ -30,6 +64,7 @@ export default function BookingScreen({
   const [validationError, setValidationError] = useState('');
   const [status, setStatus] = useState('');
   const [servingTime, setServingTime] = useState('19:30');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     tables.forEach((table) => {
@@ -49,10 +84,17 @@ export default function BookingScreen({
     const selectedTimeMinutes = isValidTimeMask(time) ? toMinutes(time) : null;
     return tables.filter((table) => {
       const seatsOk = Number(table.seats || 0) >= guestsCount;
+      const hasWindow =
+        table.from != null &&
+        table.to != null &&
+        String(table.from).trim() !== '' &&
+        String(table.to).trim() !== '';
       const timeOk =
         selectedTimeMinutes === null
           ? true
-          : selectedTimeMinutes >= toMinutes(table.from) && selectedTimeMinutes <= toMinutes(table.to);
+          : !hasWindow
+            ? true
+            : selectedTimeMinutes >= toMinutes(table.from) && selectedTimeMinutes <= toMinutes(table.to);
       return seatsOk && timeOk;
     });
   }, [tables, guestsCount, time]);
@@ -67,16 +109,39 @@ export default function BookingScreen({
     setServingTime(time);
   }, [time]);
 
+  useEffect(() => {
+    if (typeof onRequestAvailableTables !== 'function') return undefined;
+    if (!isValidDateMask(date) || !isValidTimeMask(time)) return undefined;
+
+    const [dd, mm, yyyy] = String(date).split('.');
+    if (!dd || !mm || !yyyy) return undefined;
+    const dateIso = `${yyyy}-${mm}-${dd}`;
+
+    const timer = setTimeout(() => {
+      onRequestAvailableTables({
+        date: dateIso,
+        from: time,
+        to: addTwoHoursHm(time),
+        seats: guestsCount,
+      }).catch(() => null);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [date, time, guestsCount, onRequestAvailableTables]);
+
   const cartPreview = useMemo(() => {
     return cartItems
       .map((item) => {
         const dish = dishes.find((d) => d.id === item.id);
         if (!dish) return null;
+        const modifiers = Array.isArray(item.modifiers) ? item.modifiers : [];
+        const modifiersTotal = modifiers.reduce((sum, modifier) => sum + Number(modifier?.price || 0), 0);
         return {
-          id: item.id,
+          id: item.cartItemId || item.id,
           title: dish.title,
           qty: item.quantity,
-          lineTotal: dish.price * item.quantity,
+          modifiers,
+          lineTotal: (Number(dish.price || 0) + modifiersTotal) * item.quantity,
         };
       })
       .filter(Boolean);
@@ -84,7 +149,19 @@ export default function BookingScreen({
 
   const preorderTotal = useMemo(() => cartPreview.reduce((sum, row) => sum + row.lineTotal, 0), [cartPreview]);
 
+  const preorderMenuContext = useMemo(() => {
+    if (!isValidDateMask(date) || !isValidTimeMask(servingTime || time)) return null;
+    const [dd, mm, yyyy] = String(date).split('.');
+    if (!dd || !mm || !yyyy) return null;
+    return {
+      date: `${yyyy}-${mm}-${dd}`,
+      time: servingTime || time,
+      source: 'booking',
+    };
+  }, [date, servingTime, time]);
+
   const handleSubmit = async () => {
+    if (isSubmitting) return;
     const tableId = selected || filteredTables[0]?.id;
     if (!tableId) {
       setStatus('Нет доступных столов');
@@ -98,22 +175,39 @@ export default function BookingScreen({
       setValidationError('Неверное время. Используйте формат ЧЧ:ММ');
       return;
     }
+    const bookingDateTime = parseBookingDateTime(date, time);
+    if (!bookingDateTime) {
+      setValidationError('Не удалось разобрать дату или время брони.');
+      return;
+    }
+    if (bookingDateTime.getTime() <= Date.now()) {
+      setValidationError('Нельзя забронировать стол на прошедшее время.');
+      return;
+    }
     const serving = isValidTimeMask(servingTime) ? servingTime : time;
     if (!isValidTimeMask(serving)) {
       setValidationError('Неверное время подачи. Используйте формат ЧЧ:ММ');
       return;
     }
     setValidationError('');
-    const success = await onSubmitBooking({
-      people: guestsCount,
-      date,
-      time,
-      address: DEFAULT_VENUE_LABEL,
-      tableId,
-      servingTime: serving,
-    });
-    if (success) {
-      setStatus('Бронирование подтверждено. Данные сохранены в хранилище.');
+    setStatus('');
+    setIsSubmitting(true);
+    try {
+      const result = await onSubmitBooking({
+        people: guestsCount,
+        date,
+        time,
+        address: DEFAULT_VENUE_LABEL,
+        tableId,
+        servingTime: serving,
+      });
+      if (result?.ok) {
+        setStatus('Бронирование подтверждено.');
+      } else {
+        setStatus(result?.message || 'Не удалось создать бронь. Попробуйте еще раз.');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -142,198 +236,59 @@ export default function BookingScreen({
           <Text style={[styles.title, { color: colors.text }]}>Бронирование стола</Text>
         </View>
 
-        <View style={[styles.form, isWide ? styles.formWide : null]}>
-          <View style={[styles.fieldWrap, isWide ? styles.fieldWide : null]}>
-            <Text style={[styles.fieldLabel, { color: colors.textLight }]}>Количество гостей</Text>
-            <View style={[styles.counterField, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <TouchableOpacity onPress={() => setPeople(String(Math.max(1, guestsCount - 1)))} style={styles.counterBtn}>
-                <Text style={[styles.counterBtnText, { color: colors.text }]}>−</Text>
-              </TouchableOpacity>
-              <TextInput
-                style={[styles.counterInput, { color: colors.text }]}
-                value={String(guestsCount)}
-                onChangeText={(value) => setPeople(String(Math.max(1, Number(value.replace(/\D/g, '') || 1))))}
-                keyboardType="numeric"
-                maxLength={2}
-              />
-              <TouchableOpacity onPress={() => setPeople(String(guestsCount + 1))} style={styles.counterBtn}>
-                <Text style={[styles.counterBtnText, { color: colors.text }]}>＋</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={[styles.fieldWrap, isWide ? styles.fieldWide : null]}>
-            <Text style={[styles.fieldLabel, { color: colors.textLight }]}>Дата</Text>
-            <View style={styles.dateRow}>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.dateInput,
-                  { backgroundColor: colors.card, borderColor: colors.border, color: colors.text },
-                ]}
-                value={date}
-                onChangeText={(value) => setDate(applyDateMask(value))}
-                placeholder="ДД.ММ.ГГГГ"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="number-pad"
-                maxLength={10}
-              />
-              <TouchableOpacity
-                style={[styles.calendarButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-                onPress={() => setShowCalendar((prev) => !prev)}
-              >
-                <Text style={{ color: colors.text, fontWeight: '700' }}>Календарь</Text>
-              </TouchableOpacity>
-            </View>
-            {showCalendar && (
-              <View style={[styles.calendar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.calendarHeader}>
-                  <TouchableOpacity onPress={() => setCalendarCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>
-                    <Text style={[styles.calendarNav, { color: colors.text }]}>‹</Text>
-                  </TouchableOpacity>
-                  <Text style={[styles.calendarMonth, { color: colors.text }]}>{monthLabel}</Text>
-                  <TouchableOpacity onPress={() => setCalendarCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>
-                    <Text style={[styles.calendarNav, { color: colors.text }]}>›</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.calendarGrid}>
-                  {dayCells.map((day, idx) => (
-                    <TouchableOpacity
-                      key={`${day || 'empty'}-${idx}`}
-                      disabled={!day}
-                      style={styles.calendarCell}
-                      onPress={() => {
-                        const d = String(day).padStart(2, '0');
-                        const m = String(calendarCursor.getMonth() + 1).padStart(2, '0');
-                        const y = String(calendarCursor.getFullYear());
-                        setDate(`${d}.${m}.${y}`);
-                        setShowCalendar(false);
-                      }}
-                    >
-                      <Text style={[styles.calendarCellText, { color: day ? colors.text : 'transparent' }]}>{day || '0'}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-          </View>
-
-          <View style={[styles.fieldWrap, isWide ? styles.fieldWide : null]}>
-            <Text style={[styles.fieldLabel, { color: colors.textLight }]}>Время брони</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-              value={time}
-              onChangeText={(value) => setTime(applyTimeMask(value))}
-              placeholder="ЧЧ:ММ"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={5}
-            />
-          </View>
-
-          <View style={[styles.fieldWrap, isWide ? styles.fieldWide : null]}>
-            <Text style={[styles.fieldLabel, { color: colors.textLight }]}>Время подачи блюд (предзаказ)</Text>
-            <Text style={[styles.fieldHint, { color: colors.textMuted }]}>
-              Можно отличаться от времени брони, если блюда нужны позже.
-            </Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
-              value={servingTime}
-              onChangeText={(value) => setServingTime(applyTimeMask(value))}
-              placeholder="ЧЧ:ММ"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={5}
-            />
-          </View>
-        </View>
+        <BookingFormSection
+          styles={styles}
+          colors={colors}
+          isWide={isWide}
+          guestsCount={guestsCount}
+          setPeople={setPeople}
+          date={date}
+          setDate={setDate}
+          showCalendar={showCalendar}
+          setShowCalendar={setShowCalendar}
+          monthLabel={monthLabel}
+          setCalendarCursor={setCalendarCursor}
+          calendarCursor={calendarCursor}
+          dayCells={dayCells}
+          time={time}
+          setTime={setTime}
+          servingTime={servingTime}
+          setServingTime={setServingTime}
+        />
 
         {Boolean(validationError) && (
           <Text style={[styles.errorText, { color: colors.error }]}>{validationError}</Text>
         )}
 
-        <Text style={[styles.subtitle, { color: colors.text }]}>Предзаказ к визиту</Text>
-        <Text style={[styles.preorderHint, { color: colors.textLight }]}>
-          Выберите блюда в корзине до нажатия «Подтвердить»: они будут сохранены в брони и оформлены заказом на выбранное время подачи.
-        </Text>
-        {!cartPreview.length ? (
-          onGoToMenuForPreorder ? (
-            <TouchableOpacity
-              style={[styles.secondaryBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
-              onPress={onGoToMenuForPreorder}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Добавить блюда из меню</Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={[styles.preorderHint, { color: colors.textMuted }]}>Корзина пуста — добавьте блюда через меню, затем вернитесь к брони.</Text>
-          )
-        ) : (
-          <View style={[styles.preorderCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {cartPreview.map((row) => (
-              <View key={row.id} style={styles.preorderLine}>
-                <Text style={[styles.preorderLineText, { color: colors.text }]} numberOfLines={2}>
-                  {row.title} × {row.qty}
-                </Text>
-                <Text style={[styles.preorderLinePrice, { color: colors.textLight }]}>{row.lineTotal} руб</Text>
-                {onChangeCartQty ? (
-                  <View style={styles.preorderQty}>
-                    <TouchableOpacity onPress={() => onChangeCartQty(row.id, -1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={[styles.preorderQtyBtn, { color: colors.text }]}>−</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => onChangeCartQty(row.id, 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Text style={[styles.preorderQtyBtn, { color: colors.text }]}>＋</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-              </View>
-            ))}
-            <Text style={[styles.preorderTotal, { color: colors.text }]}>Сумма предзаказа: {preorderTotal} руб</Text>
-          </View>
-        )}
+        <BookingPreorderSection
+          styles={styles}
+          colors={colors}
+          cartPreview={cartPreview}
+          preorderMenuContext={preorderMenuContext}
+          onGoToMenuForPreorder={onGoToMenuForPreorder}
+          onChangeCartQty={onChangeCartQty}
+          preorderTotal={preorderTotal}
+        />
 
-        <Text style={[styles.subtitle, { color: colors.text }]}>Доступные столы</Text>
-        <View style={styles.tables}>
-          {filteredTables.map((table) => (
-            <TouchableOpacity
-              key={table.id}
-              onPress={() => setSelected(table.id)}
-              style={[
-                styles.tableCard,
-                {
-                  backgroundColor: selected === table.id ? colors.cardElevated : colors.card,
-                  borderColor: selected === table.id ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <DishImage
-                uri={table.imageUrl}
-                title={table.name}
-                style={styles.tableImage}
-                borderRadius={borderRadius.md}
-              />
-              <Text style={[styles.tableName, { color: colors.text }]}>{table.name}</Text>
-              <Text style={[styles.tableInfo, { color: colors.textLight }]}>
-                До {table.seats} гостей • {table.from} - {table.to}
-              </Text>
-            </TouchableOpacity>
-          ))}
-          {!filteredTables.length && (
-            <Text style={[styles.status, { color: colors.warning }]}>
-              {!tables.length
-                ? 'Список столов не пришёл с сервера. Войдите в аккаунт и зайдите в бронирование снова. Если вы уже вошли, а столы не появляются — это ошибка на стороне сервера при запросе столов.'
-                : 'Под ваше время и число гостей нет подходящего стола — измените время или количество мест.'}
-            </Text>
-          )}
-        </View>
+        <BookingTablesSection
+          styles={styles}
+          colors={colors}
+          filteredTables={filteredTables}
+          tables={tables}
+          selected={selected}
+          setSelected={setSelected}
+        />
 
         {Boolean(status) && <Text style={[styles.status, { color: colors.success }]}>{status}</Text>}
 
         <TouchableOpacity
           style={[styles.button, { backgroundColor: colors.accent, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}
           onPress={handleSubmit}
+          disabled={isSubmitting}
         >
-          <Text style={[styles.buttonText, { color: colors.black }]}>Подтвердить</Text>
+          <Text style={[styles.buttonText, { color: colors.black }]}>
+            {isSubmitting ? 'Отправляем...' : 'Подтвердить'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

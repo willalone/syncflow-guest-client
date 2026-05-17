@@ -7,12 +7,20 @@ import { useTheme } from '../contexts/ThemeContext';
 import DishImage from '../components/DishImage';
 import GradientBorderCard from '../components/GradientBorderCard';
 import ScreenBackdrop from '../components/ScreenBackdrop';
+import GuestOrderHintCard from '../components/GuestOrderHintCard';
 import { runtimeConfig } from '../config/runtimeConfig';
 import * as clientApi from '../services/api/clientApi';
 
 const HERO_OUTER_R = borderRadius.xl + 2;
 
-export default function DishDetailsScreen({ dish, dishes = [], onBack, onAddToCart }) {
+export default function DishDetailsScreen({
+  dish,
+  dishes = [],
+  onBack,
+  onAddToCart,
+  canOrder = true,
+  onOpenAuth,
+}) {
   const { isDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
   const colors = getColors(isDarkMode);
@@ -20,6 +28,7 @@ export default function DishDetailsScreen({ dish, dishes = [], onBack, onAddToCa
   const [qty, setQty] = useState(1);
   const [ingredientsApi, setIngredientsApi] = useState(null);
   const [modifiersApi, setModifiersApi] = useState(null);
+  const [selectedModifiers, setSelectedModifiers] = useState({});
   const [extrasLoading, setExtrasLoading] = useState(false);
   const [extrasFailed, setExtrasFailed] = useState(false);
 
@@ -60,17 +69,34 @@ export default function DishDetailsScreen({ dish, dishes = [], onBack, onAddToCa
     };
   }, [dish?.id]);
 
+  useEffect(() => {
+    setSelectedModifiers({});
+  }, [dish?.id]);
+
   const ingredientsText = useMemo(() => {
     if (ingredientsApi && ingredientsApi.length) {
-      return ingredientsApi
+      const text = ingredientsApi
         .map((row) => {
-          const name = row?.ingredient?.name || '';
+          const ing = row?.ingredient;
+          let name = '';
+          if (ing && typeof ing === 'object' && String(ing.name || '').trim()) {
+            name = String(ing.name).trim();
+          } else if (typeof ing === 'string' && ing.trim()) {
+            name = ing.trim();
+          } else if (String(row?.name || '').trim()) {
+            name = String(row.name).trim();
+          } else if (String(row?.ingredientName || '').trim()) {
+            name = String(row.ingredientName).trim();
+          } else if (ing && typeof ing === 'object' && ing.id != null && String(ing.id).trim() !== '') {
+            name = `Ингредиент №${ing.id}`;
+          }
           const proc = row?.processingType ? ` (${row.processingType})` : '';
           const gw = row?.grossWeight != null ? ` — ${row.grossWeight} г` : '';
           return `${name}${proc}${gw}`;
-        })  
+        })
         .filter(Boolean)
         .join('\n');
+      if (text.trim()) return text;
     }
     if (extrasFailed) {
       return 'Детальный состав с сервера не загрузился — ориентируйтесь на описание выше или зайдите позже.';
@@ -81,6 +107,34 @@ export default function DishDetailsScreen({ dish, dishes = [], onBack, onAddToCa
   const recommended = (dish.recommendedWith || [])
     .map((id) => dishes.find((row) => row.id === id))
     .filter(Boolean);
+
+  const modifiersPrepared = useMemo(
+    () =>
+      (Array.isArray(modifiersApi) ? modifiersApi : [])
+        .map((row) => {
+          const m = row?.modificator;
+          const id = String(m?.id ?? row?.id ?? '');
+          const name = String(m?.ingredient?.name || 'Опция');
+          const price = Number(m?.price || 0);
+          const weight =
+            m?.grossWeight != null && m?.unit?.name
+              ? `${m.grossWeight} ${m.unit.name}`
+              : '';
+          return { id, name, price, weight };
+        })
+        .filter((item) => item.id),
+    [modifiersApi]
+  );
+
+  const selectedModifiersList = useMemo(
+    () => modifiersPrepared.filter((item) => Boolean(selectedModifiers[item.id])),
+    [modifiersPrepared, selectedModifiers]
+  );
+
+  const selectedModifiersTotal = useMemo(
+    () => selectedModifiersList.reduce((sum, item) => sum + Number(item?.price || 0), 0),
+    [selectedModifiersList]
+  );
 
   return (
     <ScreenBackdrop isDarkMode={isDarkMode} style={styles.backdrop}>
@@ -110,7 +164,7 @@ export default function DishDetailsScreen({ dish, dishes = [], onBack, onAddToCa
                 end={{ x: 1, y: 0.5 }}
                 style={styles.titleAccent}
               />
-              <Text style={[styles.price, { color: colors.primary }]}>
+              <Text style={[styles.price, { color: colors.primaryDark || colors.primary }]}>
                 {dish.price} руб.
               </Text>
               <Text style={[styles.label, { color: colors.textLight }]}>Описание</Text>
@@ -124,26 +178,47 @@ export default function DishDetailsScreen({ dish, dishes = [], onBack, onAddToCa
               ) : (
                 <Text style={[styles.text, { color: colors.text }]}>{ingredientsText}</Text>
               )}
-              {modifiersApi && modifiersApi.length ? (
+              {canOrder && modifiersApi && modifiersApi.length ? (
                 <>
                   <Text style={[styles.label, { color: colors.textLight }]}>Дополнительно</Text>
                   <View style={{ gap: spacing.xs }}>
                     {modifiersApi.map((row) => {
                       const m = row?.modificator;
+                      const modifierId = String(m?.id ?? row?.id ?? '');
+                      const selected = Boolean(selectedModifiers[modifierId]);
                       const name = m?.ingredient?.name || 'Опция';
                       const price = m?.price != null ? `${m.price} руб.` : '';
                       const w = m?.grossWeight != null && m?.unit?.name ? ` · ${m.grossWeight} ${m.unit.name}` : '';
                       return (
-                        <View
+                        <TouchableOpacity
                           key={row.id ?? `${name}-${price}`}
+                          activeOpacity={0.86}
+                          onPress={() => {
+                            if (!modifierId) return;
+                            setSelectedModifiers((prev) => ({
+                              ...prev,
+                              [modifierId]: !prev[modifierId],
+                            }));
+                          }}
                           style={[styles.modRow, { borderColor: colors.hairline, backgroundColor: colors.cardElevated }]}
                         >
                           <Text style={[styles.text, { color: colors.text, flex: 1 }]}>
                             {name}
                             {w}
                           </Text>
-                          {price ? <Text style={[styles.modPrice, { color: colors.primary }]}>{price}</Text> : null}
-                        </View>
+                          {price ? <Text style={[styles.modPrice, { color: colors.primaryDark || colors.primary }]}>{price}</Text> : null}
+                          <View
+                            style={[
+                              styles.modToggle,
+                              {
+                                borderColor: selected ? colors.primary : colors.hairline,
+                                backgroundColor: selected ? colors.primary : 'transparent',
+                              },
+                            ]}
+                          >
+                            {selected ? <Text style={[styles.modToggleText, { color: colors.black }]}>✓</Text> : null}
+                          </View>
+                        </TouchableOpacity>
                       );
                     })}
                   </View>
@@ -159,47 +234,54 @@ export default function DishDetailsScreen({ dish, dishes = [], onBack, onAddToCa
                         style={[styles.recoChip, { borderColor: colors.hairline, backgroundColor: colors.cardElevated }]}
                       >
                         <Text style={[styles.recoTitle, { color: colors.text }]}>{item.title}</Text>
-                        <Text style={[styles.recoPrice, { color: colors.textLight }]}>{item.price} руб.</Text>
-                        <TouchableOpacity
-                          onPress={() => onAddToCart(item.id, 1)}
-                          style={[styles.recoAddBtn, { backgroundColor: colors.primary }]}
-                        >
-                          <Text style={[styles.recoAddText, { color: colors.black }]}>Добавить</Text>
-                        </TouchableOpacity>
+                        <Text style={[styles.recoPrice, { color: colors.primaryDark || colors.primary }]}>{item.price} руб.</Text>
+                        {canOrder ? (
+                          <TouchableOpacity
+                            onPress={() => onAddToCart(item.id, 1)}
+                            style={[styles.recoAddBtn, { backgroundColor: colors.primary }]}
+                          >
+                            <Text style={[styles.recoAddText, { color: colors.black }]}>Добавить</Text>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
                     ))}
                   </View>
                 </>
               ) : null}
+              {!canOrder ? (
+                <GuestOrderHintCard colors={colors} onOpenAuth={onOpenAuth} />
+              ) : null}
             </View>
           </ScrollView>
 
-          <View
-            style={[
-              styles.bottom,
-              {
-                backgroundColor: colors.card,
-                borderTopColor: colors.hairline,
-                paddingBottom: Math.max(insets.bottom, spacing.md),
-              },
-            ]}
-          >
-            <View style={[styles.qty, { borderColor: colors.hairline }]}>
-              <TouchableOpacity onPress={() => setQty((value) => Math.max(1, value - 1))}>
-                <Text style={[styles.qtyButton, { color: colors.text }]}>−</Text>
-              </TouchableOpacity>
-              <Text style={[styles.qtyValue, { color: colors.text }]}>{qty}</Text>
-              <TouchableOpacity onPress={() => setQty((value) => value + 1)}>
-                <Text style={[styles.qtyButton, { color: colors.text }]}>＋</Text>
+          {canOrder ? (
+            <View
+              style={[
+                styles.bottom,
+                {
+                  backgroundColor: colors.card,
+                  borderTopColor: colors.hairline,
+                  paddingBottom: Math.max(insets.bottom, spacing.md),
+                },
+              ]}
+            >
+              <View style={[styles.qty, { borderColor: colors.hairline }]}>
+                <TouchableOpacity onPress={() => setQty((value) => Math.max(1, value - 1))}>
+                  <Text style={[styles.qtyButton, { color: colors.text }]}>−</Text>
+                </TouchableOpacity>
+                <Text style={[styles.qtyValue, { color: colors.text }]}>{qty}</Text>
+                <TouchableOpacity onPress={() => setQty((value) => value + 1)}>
+                  <Text style={[styles.qtyButton, { color: colors.text }]}>＋</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                onPress={() => onAddToCart(dish.id, qty, { modifiers: selectedModifiersList })}
+                style={[styles.addButton, { backgroundColor: colors.primary }]}
+              >
+                <Text style={[styles.addText, { color: colors.black }]}>Добавить в корзину</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              onPress={() => onAddToCart(dish.id, qty)}
-              style={[styles.addButton, { backgroundColor: colors.primary }]}
-            >
-              <Text style={[styles.addText, { color: colors.black }]}>Добавить в корзину</Text>
-            </TouchableOpacity>
-          </View>
+          ) : null}
         </View>
       </SafeAreaView>
     </ScreenBackdrop>
@@ -285,4 +367,14 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   modPrice: { ...typography.caption, fontWeight: '700' },
+  modToggle: {
+    width: 22,
+    height: 22,
+    borderRadius: borderRadius.round,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
+  },
+  modToggleText: { ...typography.caption, fontWeight: '700' },
 });

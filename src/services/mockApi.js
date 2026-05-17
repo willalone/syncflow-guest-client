@@ -44,14 +44,14 @@ async function appendNotification(userId, notification) {
 
 export async function signIn({ phone, password }) {
   if (!phone || !password) {
-    throw new Error('Введите номер телефона и пароль');
+    throw new Error('Введите логин и пароль');
   }
 
   const normalizedPhone = normalizePhone(phone);
   const users = await readUsers();
   const found = users.find((user) => user.phone === normalizedPhone);
   if (!found || found.password !== password) {
-    throw new Error('Неверный номер или пароль');
+    throw new Error('Неверный логин или пароль');
   }
 
   return withDelay({
@@ -68,18 +68,18 @@ export async function signIn({ phone, password }) {
 
 export async function signUp({ name, phone, password }) {
   if (!name?.trim() || !phone || !password) {
-    throw new Error('Заполните имя, телефон и пароль');
+    throw new Error('Заполните имя, логин и пароль');
   }
 
   const normalizedPhone = normalizePhone(phone);
   if (normalizedPhone.length < 10) {
-    throw new Error('Введите корректный номер телефона');
+    throw new Error('Введите корректный логин');
   }
 
   const users = await readUsers();
   const alreadyExists = users.some((user) => user.phone === normalizedPhone);
   if (alreadyExists) {
-    throw new Error('Пользователь с таким номером уже существует');
+    throw new Error('Пользователь с таким логином уже существует');
   }
 
   const suffix = normalizedPhone.slice(-6);
@@ -128,7 +128,7 @@ export async function updateAccount(userId, patch) {
   const users = await readUsers();
   const normalizedPhone = patch?.phoneRaw ? normalizePhone(patch.phoneRaw) : null;
   if (normalizedPhone && users.some((user) => user.id !== userId && user.phone === normalizedPhone)) {
-    throw new Error('Пользователь с таким номером уже существует');
+    throw new Error('Пользователь с таким логином уже существует');
   }
 
   const nextUsers = users.map((user) =>

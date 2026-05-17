@@ -1,6 +1,7 @@
 /** Маппинг ответа API бронирований в форму UI списка/карточки. */
 
 import { DEFAULT_VENUE_LABEL } from '../constants/venue';
+import { unwrapSyncflowList } from './syncflowList';
 
 export function mapReservationStatus(s) {
   const v = String(s || '').toUpperCase();
@@ -21,7 +22,7 @@ export function mapSyncflowReservationToBooking(r) {
     id: String(r.id),
     date: dateRu,
     time: timeShort,
-    people: r.table?.seatCount || 2,
+    people: r.table?.seatCount != null ? r.table.seatCount : null,
     address: DEFAULT_VENUE_LABEL,
     status: mapReservationStatus(r.status),
     tableId: r.table?.id != null ? String(r.table.id) : '',
@@ -30,5 +31,19 @@ export function mapSyncflowReservationToBooking(r) {
     guestPhoneNumber: r.guestPhoneNumber,
     reservHourTo: r.reservHourTo,
     raw: r,
+  };
+}
+
+/** GET /api/reservations/{id}/preorder — в форму `preorder` для карточек (API_DOCS §3.6). */
+export function preorderFromSyncflowApi(raw, servingTimeLabel) {
+  const rows = unwrapSyncflowList(raw);
+  if (!rows.length) return null;
+  return {
+    items: rows.map((row) => ({
+      id: String(row?.id ?? ''),
+      title: String(row?.dishName ?? row?.name ?? 'Позиция').trim(),
+      quantity: Math.max(1, Number(row?.quantity || 1)),
+    })),
+    servingTime: servingTimeLabel != null && String(servingTimeLabel).trim() ? String(servingTimeLabel).trim() : null,
   };
 }

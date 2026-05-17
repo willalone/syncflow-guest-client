@@ -6,7 +6,7 @@
  */
 export function calculatePromoDiscountRub(subtotal, promo) {
   if (!promo || subtotal <= 0) return 0;
-  const value = Number(promo.discountValue ?? 0);
+  const value = Number(promo.discountValue ?? promo.value ?? 0);
   if (!Number.isFinite(value) || value <= 0) return 0;
   if (promo.isPercentage) {
     return Math.min(subtotal, Number(((subtotal * value) / 100).toFixed(2)));

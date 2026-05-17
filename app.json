@@ -27,7 +27,8 @@
               "NSIncludesSubdomains": false
             }
           }
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -45,6 +46,7 @@
     "extra": {
       "useMockApi": false,
       "integratedBackend": "syncflow",
+      "restaurantId": "restaurant1",
       "apiBaseUrl": "http://186.246.5.94/api",
       "enablePremiumTabGestures": false,
       "eas": {
@@ -53,7 +55,8 @@
     },
     "plugins": [
       "expo-font",
-      "expo-video"
+      "expo-video",
+      "expo-notifications"
     ]
   }
 }

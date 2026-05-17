@@ -7,6 +7,14 @@ export function fetchMenu() {
   return request(`${BASE}/menu`);
 }
 
+export function fetchMenuRecommended(limit) {
+  return fetchMenu().then((data) => {
+    const dishes = Array.isArray(data?.dishes) ? data.dishes : Array.isArray(data) ? data : [];
+    const n = Math.max(1, Math.min(50, Number(limit) || 5));
+    return dishes.slice(0, n);
+  });
+}
+
 export function fetchTables() {
   return request(`${BASE}/tables`);
 }
@@ -88,6 +96,10 @@ export function registerPushDevice(userId, payload) {
   });
 }
 
+export function unregisterPushDevice(_token) {
+  return Promise.resolve(null);
+}
+
 export function sendTestPush(userId, payload = {}) {
   return request(`${BASE}/push/test`, {
     method: 'POST',
@@ -119,5 +131,49 @@ export function spendBonusPoints() {
 }
 
 export function fetchReservationById() {
+  return Promise.resolve(null);
+}
+
+export function fetchOrderDishes() {
+  return Promise.resolve([]);
+}
+
+export function fetchReservationPreorder() {
+  return Promise.resolve([]);
+}
+
+export function removeReservationPreorderItem() {
+  return Promise.reject(new Error('Предзаказ к брони не поддерживается локальным API.'));
+}
+
+export function applyPromoToOrder() {
+  return Promise.reject(new Error('Промокод к заказу не поддерживается локальным API.'));
+}
+
+export function syncReservationPreorder() {
+  return Promise.reject(new Error('Предзаказ к брони не поддерживается локальным API.'));
+}
+
+export function fetchNotificationsUnreadCount(_userId) {
+  return Promise.resolve(0);
+}
+
+export function markNotificationRead(_userId, _notificationId) {
+  return Promise.resolve(null);
+}
+
+export function markAllNotificationsRead(_userId) {
+  return Promise.resolve(null);
+}
+
+export function fetchBonusTransactions(_userId) {
+  return Promise.resolve([]);
+}
+
+export function tryApplyGuestPersonalDiscount() {
+  return Promise.resolve(null);
+}
+
+export function fetchOrderSummary() {
   return Promise.resolve(null);
 }

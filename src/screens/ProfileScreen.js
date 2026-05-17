@@ -1,15 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Modal,
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Image,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getColors, getShadows, spacing, borderRadius, typography } from '../constants/theme';
 import BrandHeaderAccent from '../components/BrandHeaderAccent';
@@ -18,17 +15,20 @@ import { useAuth } from '../contexts/AuthContext';
 import { useClientData } from '../contexts/ClientDataContext';
 import { applyDateMask, applyPhoneMask, isValidDateMask } from '../utils/inputMasks';
 import { runtimeConfig } from '../config/runtimeConfig';
+import * as clientApi from '../services/api/clientApi';
+import ProfileHeaderCard from './profile/ProfileHeaderCard';
+import ProfileStatsCard from './profile/ProfileStatsCard';
+import ProfileHistorySection, { ProfileHistoryCard } from './profile/ProfileHistorySection';
+import DeleteAccountModal from './profile/DeleteAccountModal';
 
 export default function ProfileScreen({
   onOpenNotifications,
   onOpenBookings,
   onOpenOrders,
-  onOpenDeliveries,
-  onSendTestPush,
 }) {
   const { isDarkMode, toggleTheme } = useTheme();
-  const { user, signOut, updateAccount, deleteAccount } = useAuth();
-  const { bookings, orders, profile, saveProfile, favorites, notifications } = useClientData();
+  const { user, signOut, updateAccount, deleteAccount, refreshSessionFromStorage } = useAuth();
+  const { bookings, orders, profile, saveProfile, favorites, notifications, notificationsUnreadCount } = useClientData();
   const isSyncflowBackend = runtimeConfig.integratedBackend === 'syncflow';
   const colors = getColors(isDarkMode);
   const shadowsThemed = useMemo(() => getShadows(isDarkMode), [isDarkMode]);
@@ -38,41 +38,66 @@ export default function ProfileScreen({
     birthDate: '',
     login: '',
     email: '',
+    phoneNumber: '',
     password: '',
   });
   const [saveStatus, setSaveStatus] = useState('');
+  const [saveStatusIsError, setSaveStatusIsError] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isDeleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [bonusTransactions, setBonusTransactions] = useState([]);
 
   useEffect(() => {
     setForm({
       firstName: profile?.firstName || user?.firstName || user?.name || '',
       lastName: profile?.lastName || '',
       birthDate: profile?.birthDate || '',
-      login: profile?.login || user?.login || user?.phone || '',
+      login: profile?.login || user?.login || '',
       email: profile?.email || user?.email || '',
+      phoneNumber: profile?.phoneNumber || profile?.phone || user?.phoneNumber || user?.phone || '',
       password: '',
     });
   }, [profile, user]);
 
+  useEffect(() => {
+    if (!isSyncflowBackend || !user?.id) {
+      setBonusTransactions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await clientApi.fetchBonusTransactions(user.id);
+        if (!cancelled) setBonusTransactions(Array.isArray(rows) ? rows.slice(0, 8) : []);
+      } catch {
+        if (!cancelled) setBonusTransactions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSyncflowBackend, user?.id]);
+
   const fullName = useMemo(() => {
     const parts = [form.firstName, form.lastName].filter(Boolean);
-    return parts.join(' ') || profile?.displayName || user?.login || user?.name || 'Гость';
+    return parts.join(' ') || profile?.displayName || user?.login || user?.name || '';
   }, [form.firstName, form.lastName, profile?.displayName, user]);
 
-  const xpPoints = Number(profile?.xpPoints || 0);
-  const deliveryOrders = useMemo(
-    () => (orders || []).filter((order) => String(order.orderType || '') === 'delivery'),
-    [orders]
-  );
+  const xpPointsRaw = profile?.xpPoints;
+  const hasXpData = xpPointsRaw != null && Number.isFinite(Number(xpPointsRaw));
+  const xpPoints = hasXpData ? Number(xpPointsRaw) : null;
   const loyaltyLevel = useMemo(() => {
+    if (xpPoints == null) return '';
     if (xpPoints >= 800) return 'Легенда';
     if (xpPoints >= 400) return 'Эксперт';
     if (xpPoints >= 150) return 'Постоянный гость';
     return 'Новичок';
   }, [xpPoints]);
 
-  const onSaveProfile = async () => {
+  const onSaveProfile = useCallback(async () => {
+    setSaveStatusIsError(false);
     if (form.birthDate && !isValidDateMask(form.birthDate)) {
+      setSaveStatusIsError(true);
       setSaveStatus('Проверьте дату рождения: формат ДД.ММ.ГГГГ');
       return;
     }
@@ -82,68 +107,49 @@ export default function ProfileScreen({
       birthDate: form.birthDate.trim(),
       login: form.login.trim(),
       email: form.email.trim(),
+      ...(isSyncflowBackend ? { phoneNumber: form.phoneNumber.trim() } : {}),
     };
-    await saveProfile(profilePatch);
-    if (!isSyncflowBackend) {
-      const accountPatch = {
-        name: [form.firstName.trim(), form.lastName.trim()].filter(Boolean).join(' ') || form.firstName.trim(),
-        phoneRaw: form.login.trim(),
-      };
-      if (form.password.trim()) {
-        accountPatch.password = form.password.trim();
+    setIsSavingProfile(true);
+    setSaveStatus('');
+    try {
+      await saveProfile(profilePatch);
+      if (!isSyncflowBackend) {
+        const accountPatch = {
+          name: [form.firstName.trim(), form.lastName.trim()].filter(Boolean).join(' ') || form.firstName.trim(),
+          phoneRaw: form.login.trim(),
+        };
+        if (form.password.trim()) {
+          accountPatch.password = form.password.trim();
+        }
+        await updateAccount(accountPatch);
+      } else if (typeof refreshSessionFromStorage === 'function') {
+        await refreshSessionFromStorage();
       }
-      await updateAccount(accountPatch);
+      setSaveStatusIsError(false);
+      setSaveStatus('Данные профиля сохранены');
+      setForm((prev) => ({ ...prev, password: '' }));
+    } catch (error) {
+      setSaveStatusIsError(true);
+      setSaveStatus(error?.message || 'Не удалось сохранить профиль. Проверьте сеть и попробуйте снова.');
+    } finally {
+      setIsSavingProfile(false);
     }
-    setSaveStatus('Данные профиля сохранены');
-    setForm((prev) => ({ ...prev, password: '' }));
-  };
+  }, [form, isSyncflowBackend, saveProfile, updateAccount, refreshSessionFromStorage]);
 
-  const onDeleteAccount = async () => {
+  const onDeleteAccount = useCallback(async () => {
     try {
       await deleteAccount();
     } catch (error) {
+      setSaveStatusIsError(true);
       setSaveStatus(error?.message || 'Не удалось удалить аккаунт. Повторите попытку позже.');
     } finally {
       setDeleteConfirmVisible(false);
     }
-  };
+  }, [deleteAccount]);
 
-  const pickAvatarFromGallery = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setSaveStatus('Нет доступа к галерее. Разрешите доступ в настройках телефона.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-    if (result.canceled || !result.assets?.length) return;
-    const uri = String(result.assets[0].uri || '');
-    if (!uri) return;
-    await saveProfile({ avatarUrl: uri });
-    setSaveStatus('Фотография профиля обновлена');
-  };
-
-  const pickAvatarFromCamera = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      setSaveStatus('Нет доступа к камере. Разрешите доступ в настройках телефона.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-    if (result.canceled || !result.assets?.length) return;
-    const uri = String(result.assets[0].uri || '');
-    if (!uri) return;
-    await saveProfile({ avatarUrl: uri });
-    setSaveStatus('Фотография профиля обновлена');
-  };
+  const notificationsPreview = useMemo(() => notifications.slice(0, 1), [notifications]);
+  const bookingsPreview = useMemo(() => bookings.slice(0, 1), [bookings]);
+  const ordersPreview = useMemo(() => orders.slice(0, 1), [orders]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -159,70 +165,39 @@ export default function ProfileScreen({
         keyboardDismissMode="on-drag"
         nestedScrollEnabled
       >
-        <View
-          style={[
-            styles.profileCard,
-            shadowsThemed.float,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <View style={styles.profileHeader}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={[styles.avatar, shadowsThemed.small, { backgroundColor: colors.cardElevated }]}
-              onPress={pickAvatarFromGallery}
-            >
-              {profile?.avatarUrl ? (
-                <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
-              ) : (
-                <Text style={[styles.avatarText, { color: colors.primaryDark }]}>ИИ</Text>
-              )}
-            </TouchableOpacity>
-            <View style={styles.profileInfo}>
-              <Text style={[styles.profileName, { color: colors.text }]}>{fullName}</Text>
-              <Text style={[styles.profileRole, { color: colors.textLight }]}>{profile?.role || 'Постоянный гость'}</Text>
-              <Text style={[styles.profileShift, { color: colors.warning }]}>Рейтинг: 4.9</Text>
-              <View style={styles.avatarActions}>
-                <TouchableOpacity
-                  style={[styles.avatarBtn, { backgroundColor: colors.backgroundLight, borderColor: colors.border }]}
-                  onPress={pickAvatarFromCamera}
-                >
-                  <Text style={[styles.avatarBtnText, { color: colors.text }]}>Сделать фото</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.avatarBtn, { backgroundColor: colors.backgroundLight, borderColor: colors.border }]}
-                  onPress={pickAvatarFromGallery}
-                >
-                  <Text style={[styles.avatarBtnText, { color: colors.text }]}>Выбрать из галереи</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
+        <ProfileHeaderCard colors={colors} shadowsThemed={shadowsThemed} fullName={fullName} role={profile?.role} />
 
-        <View
-          style={[
-            styles.statsCard,
-            shadowsThemed.float,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Text style={[styles.statsTitle, { color: colors.text }]}>Бонусный баланс</Text>
-          <Text style={[styles.bonusValue, { color: colors.primary }]}>{profile?.loyaltyPoints ?? 0} баллов</Text>
-          <Text style={[styles.xpValue, { color: colors.info }]}>Опыт: {xpPoints} XP • Уровень: {loyaltyLevel}</Text>
-          <View style={[styles.progressBackground, { backgroundColor: colors.background }]}>
-            <View style={[styles.progressFill, { backgroundColor: colors.primary }]} />
+        <ProfileStatsCard
+          colors={colors}
+          shadowsThemed={shadowsThemed}
+          loyaltyPoints={profile?.loyaltyPoints}
+          hasXpData={hasXpData}
+          xpPoints={xpPoints}
+          loyaltyLevel={loyaltyLevel}
+          discountPercentage={profile?.discountPercentage}
+          visitCount={profile?.visitCount}
+          registrationDate={profile?.registrationDate}
+        />
+
+        {isSyncflowBackend && bonusTransactions.length ? (
+          <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>История бонусов</Text>
+            {bonusTransactions.map((tx) => (
+              <View
+                key={tx.id}
+                style={[styles.bonusTxRow, { borderColor: colors.border, backgroundColor: colors.backgroundLight }]}
+              >
+                <Text style={[styles.historyTitle, { color: colors.text }]}>
+                  {tx.type === 'SPENDING' ? 'Списание' : 'Начисление'}: {tx.amount >= 0 ? '+' : ''}
+                  {tx.amount} балл.
+                </Text>
+                <Text style={[styles.historyText, { color: colors.textLight }]}>
+                  {tx.description || (tx.orderId ? `Заказ №${tx.orderId}` : '')}
+                </Text>
+              </View>
+            ))}
           </View>
-          <Text style={[styles.progressLabel, { color: colors.textLight }]}>
-            1 балл = 1 рубль. Списание до 50% чека. XP начисляется отдельно.
-          </Text>
-        </View>
+        ) : null}
 
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Личные данные</Text>
@@ -251,25 +226,35 @@ export default function ProfileScreen({
           />
           <TextInput
             style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.backgroundLight }]}
-            placeholder={isSyncflowBackend ? 'Логин' : 'Логин/телефон'}
+            placeholder="Логин"
             placeholderTextColor={colors.textMuted}
             value={form.login}
             onChangeText={(value) =>
               setForm((prev) => ({ ...prev, login: isSyncflowBackend ? value : applyPhoneMask(value) }))
             }
-            keyboardType={isSyncflowBackend ? 'default' : 'phone-pad'}
+            keyboardType="default"
           />
           {isSyncflowBackend ? (
-            <TextInput
-              style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.backgroundLight }]}
-              placeholder="Email"
-              placeholderTextColor={colors.textMuted}
-              value={form.email}
-              onChangeText={(value) => setForm((prev) => ({ ...prev, email: value }))}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <>
+              <TextInput
+                style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.backgroundLight }]}
+                placeholder="Email"
+                placeholderTextColor={colors.textMuted}
+                value={form.email}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, email: value }))}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TextInput
+                style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.backgroundLight }]}
+                placeholder="Телефон для бронирования (+7…)"
+                placeholderTextColor={colors.textMuted}
+                value={form.phoneNumber}
+                onChangeText={(value) => setForm((prev) => ({ ...prev, phoneNumber: value }))}
+                keyboardType="phone-pad"
+              />
+            </>
           ) : null}
           <TextInput
             style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.backgroundLight }]}
@@ -281,59 +266,57 @@ export default function ProfileScreen({
             autoComplete="off"
             onChangeText={(value) => setForm((prev) => ({ ...prev, password: value }))}
           />
-          <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={onSaveProfile}>
-            <Text style={[styles.saveButtonText, { color: colors.black }]}>Сохранить изменения</Text>
+          <TouchableOpacity
+            style={[styles.saveButton, { backgroundColor: colors.primary, opacity: isSavingProfile ? 0.65 : 1 }]}
+            onPress={onSaveProfile}
+            disabled={isSavingProfile}
+          >
+            <Text style={[styles.saveButtonText, { color: colors.black }]}>
+              {isSavingProfile ? 'Сохранение…' : 'Сохранить изменения'}
+            </Text>
           </TouchableOpacity>
-          {Boolean(saveStatus) && <Text style={[styles.saveStatus, { color: colors.success }]}>{saveStatus}</Text>}
+          {Boolean(saveStatus) && (
+            <Text style={[styles.saveStatus, { color: saveStatusIsError ? colors.error : colors.success }]}>{saveStatus}</Text>
+          )}
         </View>
 
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Уведомления</Text>
-            <TouchableOpacity onPress={onOpenNotifications}>
-              <Text style={[styles.linkText, { color: colors.primaryDark }]}>Смотреть все</Text>
-            </TouchableOpacity>
-          </View>
-          {notifications.slice(0, 1).map((item) => (
-            <View key={item.id} style={[styles.historyCard, { borderColor: colors.border, backgroundColor: colors.backgroundLight }]}>
+        <ProfileHistorySection
+          colors={colors}
+          title={`Уведомления${notificationsUnreadCount > 0 ? ` · ${notificationsUnreadCount}` : ''}`}
+          onOpen={onOpenNotifications}
+        >
+          {notificationsPreview.map((item) => (
+            <ProfileHistoryCard key={item.id} colors={colors}>
               <Text style={[styles.historyTitle, { color: colors.text }]}>{item.title}</Text>
               <Text style={[styles.historyText, { color: colors.textLight }]}>{item.text}</Text>
-            </View>
+            </ProfileHistoryCard>
           ))}
-        </View>
+        </ProfileHistorySection>
 
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Мои бронирования ({bookings.length})</Text>
-            <TouchableOpacity onPress={onOpenBookings}>
-              <Text style={[styles.linkText, { color: colors.primaryDark }]}>Смотреть все</Text>
-            </TouchableOpacity>
-          </View>
-          {bookings.slice(0, 1).map((booking) => (
-            <View key={booking.id} style={[styles.historyCard, { borderColor: colors.border, backgroundColor: colors.backgroundLight }]}>
+        <ProfileHistorySection colors={colors} title={`Мои бронирования (${bookings.length})`} onOpen={onOpenBookings}>
+          {bookingsPreview.map((booking) => (
+            <ProfileHistoryCard key={booking.id} colors={colors}>
               <Text style={[styles.historyTitle, { color: colors.text }]}>{booking.date} в {booking.time}</Text>
               <Text style={[styles.historyText, { color: colors.textLight }]}>
-                Гостей: {booking.people} • Адрес: {booking.address || 'не указан'}
+                Гостей: {booking.people != null ? booking.people : '—'} • Адрес: {booking.address || '—'}
               </Text>
               {booking.preorder?.items?.length ? (
                 <Text style={[styles.historyText, { color: colors.textLight }]}>
                   Предзаказ: {booking.preorder.items.length} поз. • подача {booking.preorder.servingTime || booking.time}
                 </Text>
               ) : null}
-            </View>
+            </ProfileHistoryCard>
           ))}
-        </View>
+        </ProfileHistorySection>
 
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Мои заказы ({orders.length})</Text>
-            <TouchableOpacity onPress={onOpenOrders}>
-              <Text style={[styles.linkText, { color: colors.primaryDark }]}>Смотреть все</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.sectionMeta, { color: colors.textLight }]}>Избранное: {favorites.length}</Text>
-          {orders.slice(0, 1).map((order) => (
-            <View key={order.id} style={[styles.historyCard, { borderColor: colors.border, backgroundColor: colors.backgroundLight }]}>
+        <ProfileHistorySection
+          colors={colors}
+          title={`Мои заказы (${orders.length})`}
+          onOpen={onOpenOrders}
+          meta={`Избранное: ${favorites.length}`}
+        >
+          {ordersPreview.map((order) => (
+            <ProfileHistoryCard key={order.id} colors={colors}>
               <Text style={[styles.historyTitle, { color: colors.text }]}>Сумма: {order.total} руб.</Text>
               <Text style={[styles.historyText, { color: colors.textLight }]}>
                 Адрес: {order.bookingDraft?.address || 'не указан'} • Бонусы: -{order.bonusSpent || 0} / +{order.bonusEarned || 0}
@@ -344,43 +327,15 @@ export default function ProfileScreen({
               <Text style={[styles.historyText, { color: colors.textLight }]}>
                 Статус оплаты: {order.paymentStatus === 'paid' ? 'Оплачен' : 'Ожидание оплаты'}
               </Text>
-            </View>
+            </ProfileHistoryCard>
           ))}
-        </View>
-        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Мои доставки ({deliveryOrders.length})</Text>
-            <TouchableOpacity onPress={onOpenDeliveries}>
-              <Text style={[styles.linkText, { color: colors.primaryDark }]}>Смотреть все</Text>
-            </TouchableOpacity>
-          </View>
-          {deliveryOrders.slice(0, 1).map((order) => (
-            <View key={order.id} style={[styles.historyCard, { borderColor: colors.border, backgroundColor: colors.backgroundLight }]}>
-              <Text style={[styles.historyTitle, { color: colors.text }]}>Сумма: {order.total} руб.</Text>
-              <Text style={[styles.historyText, { color: colors.textLight }]}>
-                Город: {order?.deliveryDetails?.city || 'не указан'} • Улица: {order?.deliveryDetails?.addressLine || order?.bookingDraft?.address || 'не указан'}
-              </Text>
-              <Text style={[styles.historyText, { color: colors.textLight }]}>
-                Статус: {order?.deliveryStatus || 'создано'}
-              </Text>
-            </View>
-          ))}
-        </View>
-
+        </ProfileHistorySection>
         <TouchableOpacity
           style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={toggleTheme}
         >
           <Text style={[styles.themeButtonText, { color: colors.text }]}>
             Тема: {isDarkMode ? 'Темная' : 'Светлая'} (нажмите для смены)
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.themeButton, { backgroundColor: colors.card, borderColor: colors.border, marginTop: spacing.sm }]}
-          onPress={onSendTestPush}
-        >
-          <Text style={[styles.themeButtonText, { color: colors.text }]}>
-            Отправить тестовое push-уведомление
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -396,25 +351,12 @@ export default function ProfileScreen({
           <Text style={[styles.deleteText, { color: colors.error }]}>Удалить аккаунт</Text>
         </TouchableOpacity>
       </ScrollView>
-      <Modal transparent visible={isDeleteConfirmVisible} animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Удалить аккаунт?</Text>
-            <Text style={[styles.modalText, { color: colors.textLight }]}>
-              Аккаунт и связанные данные будут удалены. Это действие нельзя отменить.
-            </Text>
-            <TouchableOpacity style={[styles.modalDangerBtn, { backgroundColor: colors.error }]} onPress={onDeleteAccount}>
-              <Text style={[styles.modalDangerText, { color: colors.white }]}>Удалить</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalCancelBtn, { borderColor: colors.border }]}
-              onPress={() => setDeleteConfirmVisible(false)}
-            >
-              <Text style={[styles.modalCancelText, { color: colors.text }]}>Отмена</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <DeleteAccountModal
+        visible={isDeleteConfirmVisible}
+        colors={colors}
+        onDelete={onDeleteAccount}
+        onCancel={() => setDeleteConfirmVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -437,95 +379,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: spacing.lg,
   },
-  profileCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  profileHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-    overflow: 'hidden',
-  },
-  avatarText: {
-    ...typography.h3,
-    fontWeight: '700',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: borderRadius.lg,
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  avatarActions: {
-    marginTop: spacing.xs,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    flexWrap: 'wrap',
-  },
-  avatarBtn: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-  },
-  avatarBtnText: {
-    ...typography.caption,
-    fontWeight: '600',
-  },
-  profileName: {
-    ...typography.h3,
-    marginBottom: spacing.xs,
-  },
-  profileRole: {
-    ...typography.body,
-    marginBottom: spacing.xs,
-  },
-  profileShift: {
-    ...typography.caption,
-  },
-  statsCard: {
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  statsTitle: {
-    ...typography.h4,
-    marginBottom: spacing.sm,
-  },
-  bonusValue: {
-    ...typography.h2,
-    marginBottom: spacing.sm,
-  },
-  xpValue: {
-    ...typography.caption,
-    marginBottom: spacing.sm,
-    fontWeight: '700',
-  },
-  progressBackground: {
-    height: 8,
-    borderRadius: borderRadius.round,
-    marginBottom: spacing.sm,
-  },
-  progressFill: {
-    width: '72%',
-    height: '100%',
-    borderRadius: borderRadius.round,
-  },
-  progressLabel: {
-    ...typography.caption,
-  },
   themeButton: {
     borderWidth: 1,
     borderRadius: borderRadius.lg,
@@ -543,12 +396,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.h4,
-    marginBottom: spacing.sm,
-  },
-  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  linkText: { ...typography.caption, fontWeight: '700' },
-  sectionMeta: {
-    ...typography.caption,
     marginBottom: spacing.sm,
   },
   input: {
@@ -573,12 +420,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     marginTop: spacing.xs,
   },
-  historyCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
-  },
   historyTitle: {
     ...typography.body,
     fontWeight: '600',
@@ -586,6 +427,12 @@ const styles = StyleSheet.create({
   },
   historyText: {
     ...typography.caption,
+  },
+  bonusTxRow: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
   },
   logoutButton: {
     marginTop: spacing.md,
@@ -607,47 +454,6 @@ const styles = StyleSheet.create({
   deleteText: {
     ...typography.button,
     fontWeight: '700',
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  modalCard: {
-    width: '100%',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-  },
-  modalTitle: {
-    ...typography.h4,
-    marginBottom: spacing.xs,
-  },
-  modalText: {
-    ...typography.body,
-    marginBottom: spacing.md,
-  },
-  modalDangerBtn: {
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  modalDangerText: {
-    ...typography.button,
-    fontWeight: '700',
-  },
-  modalCancelBtn: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
-  modalCancelText: {
-    ...typography.button,
-    fontWeight: '600',
   },
 });
 
