@@ -1,6 +1,16 @@
 import React from 'react';
-import { ActivityIndicator, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { BlurView } from 'expo-blur';
+import { borderRadius, fontFamily, spacing, typography } from '../../constants/theme';
 import { RECOVERY_CODE_TTL_MINUTES, RECOVERY_MIN_PASSWORD_LENGTH, RECOVERY_STAGE } from '../../constants/passwordRecovery';
 import RecoveryCodeInput from './RecoveryCodeInput';
 
@@ -9,8 +19,6 @@ export default function PasswordRecoveryModal({
   blurIntensity,
   blurTint,
   isDarkMode,
-  Platform,
-  styles,
   colors,
   recoveryEmail,
   setRecoveryEmail,
@@ -51,7 +59,7 @@ export default function PasswordRecoveryModal({
               {isVerify
                 ? `Код из письма (${RECOVERY_CODE_TTL_MINUTES} мин). Затем новый пароль — от ${RECOVERY_MIN_PASSWORD_LENGTH} символов.`
                 : recoveryLoading
-                  ? 'Ждём ответ сервера. Поля для кода появятся только после подтверждения отправки письма.'
+                  ? 'Отправка письма на сервере может занять 1–3 минуты. Не закрывайте окно — поля для кода появятся только после успешного ответа.'
                   : 'Укажите email, привязанный к аккаунту, и нажмите «Отправить код».'}
             </Text>
 
@@ -166,3 +174,78 @@ export default function PasswordRecoveryModal({
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(14, 12, 20, 0.42)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  recoveryModal: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: borderRadius['2xl'],
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  recoveryInner: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  recoveryTitle: {
+    ...typography.h3,
+  },
+  recoveryHint: {
+    ...typography.caption,
+    marginBottom: spacing.xs,
+  },
+  input: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    ...typography.body,
+  },
+  error: {
+    ...typography.caption,
+    marginTop: spacing.xs,
+  },
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    marginTop: -4,
+  },
+  forgotText: {
+    ...typography.caption,
+    fontFamily: fontFamily.sansMedium,
+  },
+  recoverySuccess: {
+    ...typography.caption,
+    marginTop: spacing.xs,
+  },
+  recoveryActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  modalBtnGhost: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: borderRadius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnPrimary: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnText: {
+    ...typography.button,
+    fontWeight: '700',
+  },
+});

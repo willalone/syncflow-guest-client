@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { AppState, StyleSheet, View } from 'react-native';
 import { useEventListener } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,15 +7,44 @@ import { LinearGradient } from 'expo-linear-gradient';
 const VIDEO_SOURCE = require('../../assets/shadergradient.mov');
 
 /**
- * Фон входа: зацикленное видео через expo-video (expo-av устарел в SDK 54).
+ * Фон входа: зацикленное беззвучное видео (expo-video).
+ * audioMixingMode: mixWithOthers — не останавливать Spotify/Apple Music и др.
  */
 export default function AuthAtmosphereBackground({ isDarkMode }) {
   const [useFallback, setUseFallback] = useState(false);
   const player = useVideoPlayer(VIDEO_SOURCE, (p) => {
     p.loop = true;
     p.muted = true;
+    p.volume = 0;
+    p.audioMixingMode = 'mixWithOthers';
     p.play();
   });
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        try {
+          player.play();
+        } catch {
+          // no-op
+        }
+        return;
+      }
+      try {
+        player.pause();
+      } catch {
+        // no-op
+      }
+    });
+    return () => {
+      sub.remove();
+      try {
+        player.pause();
+      } catch {
+        // no-op
+      }
+    };
+  }, [player]);
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
     if (status === 'error' || error) setUseFallback(true);

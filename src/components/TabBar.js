@@ -9,7 +9,6 @@ import { getCartCount } from '../utils/cart';
 
 const tabs = [
   { id: 'Menu', label: 'Меню', icon: 'restaurant-outline' },
-  { id: 'Bar', label: 'Бар', icon: 'wine-outline' },
   { id: 'Cart', label: 'Корзина', icon: 'cart-outline' },
   { id: 'Booking', label: 'Бронь', icon: 'calendar-outline' },
   { id: 'Profile', label: 'Профиль', icon: 'person-outline' },

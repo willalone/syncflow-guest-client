@@ -388,8 +388,6 @@ export default function AuthScreen({ onBackToMenu }) {
         blurIntensity={blurIntensity}
         blurTint={blurTint}
         isDarkMode={isDarkMode}
-        Platform={Platform}
-        styles={styles}
         colors={colors}
         recoveryEmail={recovery.recoveryEmail}
         setRecoveryEmail={recovery.setRecoveryEmail}
@@ -510,84 +508,6 @@ const styles = StyleSheet.create({
   forgotText: {
     ...typography.caption,
     fontFamily: fontFamily.sansMedium,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(14, 12, 20, 0.42)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-  },
-  recoveryModal: {
-    width: '100%',
-    maxWidth: 420,
-    borderRadius: borderRadius['2xl'],
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  recoveryInner: {
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  recoveryTitle: {
-    ...typography.h3,
-  },
-  recoveryHint: {
-    ...typography.caption,
-    marginBottom: spacing.xs,
-  },
-  hiddenCodeInput: {
-    position: 'absolute',
-    opacity: 0.01,
-    width: 1,
-    height: 1,
-  },
-  codeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  codeCell: {
-    flex: 1,
-    minHeight: 56,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  codeDigit: {
-    ...typography.h3,
-    fontFamily: fontFamily.sansBold,
-  },
-  recoverySuccess: {
-    ...typography.caption,
-    marginTop: spacing.xs,
-  },
-  recoveryActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  modalBtnGhost: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: borderRadius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBtnPrimary: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBtnText: {
-    ...typography.button,
-    fontWeight: '700',
   },
   cta: {
     marginTop: spacing.sm,

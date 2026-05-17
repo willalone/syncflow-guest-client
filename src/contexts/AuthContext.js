@@ -1,8 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 import * as authApi from '../services/api/authApi';
 import * as clientApi from '../services/api/clientApi';
 import { runtimeConfig } from '../config/runtimeConfig';
-import { readAuthSession, writeAuthSession } from '../services/authSessionStorage';
+import { hydrateStoredGuestSession } from '../services/guestSession';
+import { readAuthSession, subscribeAuthSession, writeAuthSession } from '../services/authSessionStorage';
 
 const AuthContext = createContext();
 
@@ -30,18 +32,50 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     async function restore() {
       try {
-        const stored = await readAuthSession();
-        if (stored) {
+        const stored = await hydrateStoredGuestSession();
+        if (!cancelled && stored) {
           setSession(normalizeSession(stored));
         }
       } finally {
-        setIsLoadingSession(false);
+        if (!cancelled) setIsLoadingSession(false);
       }
     }
     restore();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const refreshSessionFromStorage = useCallback(async () => {
+    const stored = await readAuthSession();
+    if (stored) {
+      setSession(normalizeSession(stored));
+      return;
+    }
+    setSession(null);
+  }, []);
+
+  /** После refresh в syncflowHttp сессия в памяти совпадает с AsyncStorage. */
+  useEffect(() => {
+    return subscribeAuthSession((stored) => {
+      if (stored) {
+        setSession(normalizeSession(stored));
+      }
+    });
+  }, []);
+
+  /** Возврат с главного экрана ОС — перечитать токены и не «разлогинивать» UI. */
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refreshSessionFromStorage();
+      }
+    });
+    return () => sub.remove();
+  }, [refreshSessionFromStorage]);
 
   const signIn = async (fields) => {
     setAuthError('');
@@ -109,14 +143,6 @@ export function AuthProvider({ children }) {
     await writeAuthSession(null);
     return true;
   };
-
-  /** Подтянуть сессию из хранилища (например после PATCH /guest/profile, который обновляет user в AsyncStorage). */
-  const refreshSessionFromStorage = useCallback(async () => {
-    const stored = await readAuthSession();
-    if (stored) {
-      setSession(normalizeSession(stored));
-    }
-  }, []);
 
   const requestPasswordRecovery = async ({ email, signal }) => {
     setAuthError('');

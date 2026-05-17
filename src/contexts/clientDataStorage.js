@@ -30,3 +30,14 @@ export async function writeJson(key, value) {
     // no-op cache write failure
   }
 }
+
+/** Дописывает поля в кэш профиля/заказов/избранного для офлайн-возврата в приложение. */
+export async function patchUserScopeCache(userId, partial) {
+  if (!userId || userId === 'guest') return;
+  const key = userScopedCacheKey(userId);
+  const prev = (await readJson(key)) || { data: {} };
+  await writeJson(key, {
+    updatedAt: Date.now(),
+    data: { ...(prev.data || {}), ...partial },
+  });
+}

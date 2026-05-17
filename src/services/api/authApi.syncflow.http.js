@@ -1,4 +1,9 @@
+import {
+  RECOVERY_NETWORK_RETRIES,
+  RECOVERY_TIMEOUT_MS,
+} from '../../constants/passwordRecovery';
 import { normalizeEmailForApi } from '../../utils/inputMasks';
+import { userFromAccessToken } from '../../utils/jwt';
 import { logger } from '../../utils/logger';
 import { readAuthSession, writeAuthSession } from '../authSessionStorage';
 import { apiBase, syncflowGuestRequest, syncflowPublicRequest } from '../syncflowHttp';
@@ -30,29 +35,6 @@ async function guestLoginAfterRegister(login, password) {
     }
   }
   throw lastError;
-}
-
-function decodeJwtPayload(token) {
-  if (!token || typeof token !== 'string') return null;
-  try {
-    const part = token.split('.')[1];
-    if (!part) return null;
-    const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
-    const pad = '='.repeat((4 - (b64.length % 4)) % 4);
-    if (typeof atob !== 'function') return null;
-    return JSON.parse(atob(b64 + pad));
-  } catch {
-    return null;
-  }
-}
-
-function userFromAccessToken(accessToken, loginHint) {
-  const payload = decodeJwtPayload(accessToken);
-  const sub = payload?.sub ?? payload?.userId ?? payload?.guestId ?? payload?.id;
-  return {
-    id: sub != null ? String(sub) : loginHint || 'guest',
-    login: loginHint || payload?.login || String(sub || ''),
-  };
 }
 
 /**
@@ -163,11 +145,6 @@ export async function deleteAccount() {
   });
   return true;
 }
-
-/** Долгий лимит: бэкенд часто синхронно шлёт письмо по SMTP. Без автоповтора — не ждём второй такой же таймаут подряд. */
-/** SMTP на бэкенде часто дольше 45 с; коллеги с Postman ждут ответ сервера, приложение обрывало раньше. */
-const RECOVERY_TIMEOUT_MS = 120000;
-const RECOVERY_NETWORK_RETRIES = 0;
 
 /**
  * API_DOCS §2.6 шаг 1 — сервер генерирует 6-значный код и шлёт письмо по SMTP.

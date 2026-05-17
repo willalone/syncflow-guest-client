@@ -19,8 +19,6 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import OrdersHistoryScreen from '../screens/OrdersHistoryScreen';
 import BookingsHistoryScreen from '../screens/BookingsHistoryScreen';
 import BookingDetailScreen from '../screens/BookingDetailScreen';
-import BarScreen from '../screens/BarScreen';
-
 // Navigation
 import TabBar from '../components/TabBar';
 import AppToast from '../components/AppToast';
@@ -31,8 +29,7 @@ import { useNetworkRecovery } from '../hooks/useNetworkRecovery';
 import { useTabSwipeNavigation } from '../hooks/useTabSwipeNavigation';
 import { useCheckoutFlow } from '../hooks/useCheckoutFlow';
 import { getNativePushToken } from '../services/pushToken';
-
-const TAB_ORDER = ['Menu', 'Bar', 'Cart', 'Booking', 'Profile'];
+import { isOverlayScreen, NAVIGABLE_SCREEN_IDS, TAB_ORDER } from './screenIds';
 const NativeTabStack = createNativeStackNavigator();
 
 export default function AppNavigator() {
@@ -200,8 +197,7 @@ export default function AppNavigator() {
     }
     const targetScreen = String(notification?.targetScreen || '');
     if (targetScreen) {
-      const allowed = new Set(['Menu', 'Bar', 'Cart', 'Booking', 'Profile', 'Notifications', 'Orders', 'Bookings']);
-      if (allowed.has(targetScreen)) {
+      if (NAVIGABLE_SCREEN_IDS.has(targetScreen)) {
         navigateToScreen(targetScreen);
         return;
       }
@@ -264,8 +260,6 @@ export default function AppNavigator() {
             onSubmitBooking={onBookingSubmit}
           />
         );
-      case 'Bar':
-        return <BarScreen dishes={menu.dishes} onOpenDish={setSelectedDish} />;
       case 'Profile':
         return (
           <ProfileScreen
@@ -465,7 +459,7 @@ export default function AppNavigator() {
       {isAuthenticated &&
       !selectedDish &&
       !selectedBooking &&
-      !['Notifications', 'Orders', 'Bookings'].includes(currentScreen) ? (
+      !isOverlayScreen(currentScreen) ? (
         <TabBar
           currentScreen={currentScreen}
           onNavigate={(screen) => navigateToScreen(screen)}

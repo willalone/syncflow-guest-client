@@ -25,6 +25,7 @@ export function useClientDataActions({
   isLoadingMoreOrders,
   isLoadingMoreNotifications,
   persistCart,
+  persistUserScope,
   setAppliedPromo,
   setProfile,
   setBookings,
@@ -104,7 +105,12 @@ export function useClientDataActions({
 
   const createBooking = useCallback(async (payload) => {
     const booking = await clientApi.createBooking(payload, userId);
-    setBookings((prev) => [booking, ...prev]);
+    let nextBookings = [];
+    setBookings((prev) => {
+      nextBookings = [booking, ...prev];
+      return nextBookings;
+    });
+    await persistUserScope({ bookings: nextBookings });
     const updatedNotifications = await clientApi.fetchNotifications(userId, { limit: NOTIFICATIONS_PAGE_LIMIT, offset: 0 });
     setNotifications(updatedNotifications);
     try {
@@ -114,11 +120,15 @@ export function useClientDataActions({
       setNotificationsUnreadCount(updatedNotifications.filter((n) => n.read !== true).length);
     }
     return booking;
-  }, [userId, setBookings, setNotifications, setNotificationsUnreadCount]);
+  }, [userId, setBookings, setNotifications, setNotificationsUnreadCount, persistUserScope]);
 
   const createOrder = useCallback(async (payload) => {
     const order = await clientApi.createOrder(payload, userId);
-    setOrders((prev) => [order, ...prev]);
+    let nextOrders = [];
+    setOrders((prev) => {
+      nextOrders = [order, ...prev];
+      return nextOrders;
+    });
 
     setProfile((prev) => {
       if (!prev) return prev;
@@ -169,8 +179,9 @@ export function useClientDataActions({
     } catch {
       // keep optimistic state when network is unstable
     }
+    await persistUserScope({ orders: nextOrders });
     return order;
-  }, [userId, setOrders, setProfile, setNotifications, setNotificationsUnreadCount]);
+  }, [userId, setOrders, setProfile, setNotifications, setNotificationsUnreadCount, persistUserScope]);
 
   const payOrder = useCallback(async (orderId) => {
     const updated = await clientApi.payOrder(orderId, userId);
@@ -248,13 +259,16 @@ export function useClientDataActions({
   const saveProfile = useCallback(async (patch) => {
     const next = await clientApi.updateUserProfile(userId, patch);
     setProfile(next);
+    await persistUserScope({ profile: next });
     return next;
-  }, [userId, setProfile]);
+  }, [userId, setProfile, persistUserScope]);
 
   const toggleFavorite = useCallback(async (dishId) => {
     const next = await clientApi.toggleFavorite(userId, dishId);
-    setFavorites(uniqueStringArray(next));
-  }, [userId, setFavorites]);
+    const normalized = uniqueStringArray(next);
+    setFavorites(normalized);
+    await persistUserScope({ favorites: normalized });
+  }, [userId, setFavorites, persistUserScope]);
 
   const loadMoreOrders = useCallback(async () => {
     if (!isAuthenticated || isLoadingMoreOrders || !ordersHasMore) return;

@@ -191,7 +191,7 @@ sequenceDiagram
 
 ### 5.3 Меню и карточка блюда
 
-- Категории, поиск с debounce, экран «Бар» как отдельная вкладка по категории напитков (если данные есть в меню).
+- Категории, поиск с debounce (напитки и прочие категории — в общем меню).
 - **Рекомендации:** `GET /menu/recommended?limit=…` (публично, с fallback на авторизованный запрос при 401/403).
 - **Состав и модификаторы** подгружаются с API; списки нормализуются (в т.ч. ответы в формате Spring `Page` с полем `content`).
 - Цены на карточках: акцентный цвет читаемый на фоне (`primaryDark` при наличии).
@@ -293,7 +293,7 @@ sequenceDiagram
 │   │       ├── authApi*.js
 │   │       └── syncflowMappers.js
 │   ├── screens/
-│   │   ├── MenuScreen.js, BarScreen.js, CartScreen.js
+│   │   ├── MenuScreen.js, CartScreen.js
 │   │   ├── BookingScreen.js, ProfileScreen.js, AuthScreen.js
 │   │   ├── DishDetailsScreen.js, NotificationsScreen.js
 │   │   ├── OrdersHistoryScreen.js, BookingsHistoryScreen.js

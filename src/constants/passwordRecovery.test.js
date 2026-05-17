@@ -2,7 +2,9 @@ import {
   RECOVERY_CODE_LENGTH,
   RECOVERY_CODE_TTL_MINUTES,
   RECOVERY_MIN_PASSWORD_LENGTH,
+  RECOVERY_NETWORK_RETRIES,
   RECOVERY_STAGE,
+  RECOVERY_TIMEOUT_MS,
   pickServerMessage,
 } from './passwordRecovery';
 
@@ -17,6 +19,11 @@ describe('passwordRecovery constants', () => {
   it('defines two UI stages', () => {
     expect(RECOVERY_STAGE.REQUEST).toBe('request');
     expect(RECOVERY_STAGE.VERIFY).toBe('verify');
+  });
+
+  it('uses long SMTP timeout without retries', () => {
+    expect(RECOVERY_TIMEOUT_MS).toBe(180000);
+    expect(RECOVERY_NETWORK_RETRIES).toBe(0);
   });
 });
 

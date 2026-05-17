@@ -1,9 +1,9 @@
 import { runtimeConfig } from '../../config/runtimeConfig';
 import * as mockApi from './authApi.mock';
 import * as localHttp from './authApi.local.http';
-import * as syncflowHttp from './authApi.syncflow.http';
+import * as syncflowAuthApi from './authApi.syncflow.http';
 
-const httpApi = runtimeConfig.integratedBackend === 'syncflow' ? syncflowHttp : localHttp;
+const httpApi = runtimeConfig.integratedBackend === 'syncflow' ? syncflowAuthApi : localHttp;
 const api = runtimeConfig.useMockApi ? mockApi : httpApi;
 
 export const signIn = (...args) => api.signIn(...args);

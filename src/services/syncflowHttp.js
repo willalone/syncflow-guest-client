@@ -142,7 +142,8 @@ function normalizeTransportError(error) {
 
 let refreshPromise = null;
 
-async function refreshGuestAccess() {
+/** Обновляет access/refresh в AsyncStorage; AuthContext подписан на writeAuthSession. */
+export async function refreshGuestAccess() {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     const session = await readAuthSession();

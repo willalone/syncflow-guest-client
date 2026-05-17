@@ -1,12 +1,40 @@
 import {
+  mapBonusTransactionToClient,
   mapMenuClientRowToDish,
   mapOrderSummaryToClient,
+  mapSyncflowNotificationToClient,
+  normalizeOrderStatus,
+  normalizeOrderType,
   normalizeSyncflowListResponse,
   mapSyncflowOrderToClient,
   mapSyncflowOrderDishesToClientItems,
 } from './syncflowMappers';
 
 describe('syncflowMappers', () => {
+  test('normalizeOrderType and normalizeOrderStatus', () => {
+    expect(normalizeOrderType('TAKEAWAY')).toBe('pickup');
+    expect(normalizeOrderType('DINE_IN')).toBe('booking');
+    expect(normalizeOrderStatus('PAID')).toBe('paid');
+    expect(normalizeOrderStatus('IN_PROGRESS')).toBe('in_progress');
+  });
+
+  test('mapMenuClientRowToDish returns null without dish', () => {
+    expect(mapMenuClientRowToDish({ id: 1 })).toBeNull();
+  });
+
+  test('mapSyncflowNotificationToClient', () => {
+    const n = mapSyncflowNotificationToClient({ id: 3, body: 'Текст уведомления', read: false });
+    expect(n.id).toBe('3');
+    expect(n.text).toBe('Текст уведомления');
+    expect(n.read).toBe(false);
+  });
+
+  test('mapBonusTransactionToClient', () => {
+    const tx = mapBonusTransactionToClient({ id: 8, type: 'SPENDING', amount: 50 });
+    expect(tx.type).toBe('SPENDING');
+    expect(tx.amount).toBe(50);
+  });
+
   test('normalizes list wrappers', () => {
     expect(normalizeSyncflowListResponse({ content: [{ id: 1 }] })).toEqual([{ id: 1 }]);
     expect(normalizeSyncflowListResponse([{ id: 2 }])).toEqual([{ id: 2 }]);

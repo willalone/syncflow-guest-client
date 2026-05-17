@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext';
 import {
   cartKey,
 } from './clientDataUtils';
-import { writeJson } from './clientDataStorage';
+import { patchUserScopeCache, writeJson } from './clientDataStorage';
 import { useClientDataBootstrap } from './useClientDataBootstrap';
 import { useClientDataActions } from './useClientDataActions';
 
@@ -60,6 +60,14 @@ export function ClientDataProvider({ children }) {
     await writeJson(cartKey(userId), next);
   }, [userId]);
 
+  const persistUserScope = useCallback(
+    async (partial) => {
+      if (!isAuthenticated) return;
+      await patchUserScopeCache(userId, partial);
+    },
+    [userId, isAuthenticated],
+  );
+
   const {
     addToCart,
     changeCartQty,
@@ -92,6 +100,7 @@ export function ClientDataProvider({ children }) {
     isLoadingMoreOrders,
     isLoadingMoreNotifications,
     persistCart,
+    persistUserScope,
     setAppliedPromo,
     setProfile,
     setBookings,
