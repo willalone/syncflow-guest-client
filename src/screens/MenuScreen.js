@@ -191,7 +191,7 @@ export default function MenuScreen({
                       active
                         ? [
                             { backgroundColor: colors.primary, borderColor: colors.primaryDark },
-                            isDarkMode ? shadowsThemed.glowLime : null,
+                            shadowsThemed.accentGlow,
                           ]
                         : { borderColor: glass.border, backgroundColor: glass.fill },
                     ]}
@@ -230,7 +230,7 @@ export default function MenuScreen({
           initialNumToRender={8}
           windowSize={7}
           maxToRenderPerBatch={8}
-          removeClippedSubviews={Platform.OS === 'android'}
+          removeClippedSubviews={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           nestedScrollEnabled
@@ -308,7 +308,8 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: layout.screenPaddingX,
-    paddingTop: 0,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   columnWrap: {
     gap: spacing.sm,

@@ -306,6 +306,7 @@ export default function ProfileScreen({
                 backgroundColor: isProfileDirty && !isSavingProfile ? colors.primary : colors.textMuted,
                 opacity: isSavingProfile ? 0.65 : 1,
               },
+              isProfileDirty && !isSavingProfile ? shadowsThemed.accentGlow : null,
             ]}
             onPress={onSaveProfile}
             disabled={!isProfileDirty || isSavingProfile}

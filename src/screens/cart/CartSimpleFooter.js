@@ -11,13 +11,7 @@ export default function CartSimpleFooter({ total, itemCount, onProceedToCheckout
   const canProceed = itemCount > 0 && !disabled;
 
   return (
-    <View
-      style={[
-        styles.footer,
-        { backgroundColor: glass.fillStrong, borderTopColor: glass.border },
-        isDarkMode ? shadowsThemed.glowSoft : null,
-      ]}
-    >
+    <View style={[styles.footer, { backgroundColor: glass.fillStrong, borderTopColor: glass.border }]}>
       <View style={styles.row}>
         <View style={styles.summary}>
           <Text style={[styles.label, { color: colors.textMuted }]}>Итого</Text>
@@ -33,7 +27,7 @@ export default function CartSimpleFooter({ total, itemCount, onProceedToCheckout
           style={[
             styles.button,
             { backgroundColor: canProceed ? colors.primary : colors.textMuted },
-            canProceed && isDarkMode ? shadowsThemed.glowLime : null,
+            canProceed ? shadowsThemed.accentGlow : null,
           ]}
         >
           <Text style={[styles.buttonText, { color: colors.black }]}>Перейти к оплате</Text>

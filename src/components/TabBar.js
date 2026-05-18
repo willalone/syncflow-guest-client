@@ -98,14 +98,7 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
 
   return (
     <View style={[styles.floatWrap, { paddingBottom: bottomPad }]}>
-      <View
-        style={[
-          styles.tabBarShell,
-          shadowsThemed.glass,
-          isDarkMode ? shadowsThemed.glowSoft : null,
-          { borderColor: glass.border, borderRadius: borderRadius['2xl'] },
-        ]}
-      >
+      <View style={[styles.tabBarShell, shadowsThemed.glass, { borderColor: glass.border, borderRadius: borderRadius['2xl'] }]}>
         <BlurView
           intensity={glass.blurIntensity}
           tint={glass.blurTint}
@@ -130,26 +123,15 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
                 activeOpacity={0.85}
               >
                 <View style={styles.iconSlot}>
-                  <Animated.View
-                    style={[
-                      { transform: [{ scale: iconScaleMap[tab.id] || 1 }] },
-                      active && isDarkMode ? shadowsThemed.glowLime : null,
-                    ]}
-                  >
+                  <Animated.View style={{ transform: [{ scale: iconScaleMap[tab.id] || 1 }] }}>
                     <Ionicons
                       name={active ? tab.iconActive : tab.icon}
                       size={isCompact ? 23 : 25}
-                      color={active ? colors.primary : colors.textMuted}
+                      color={active ? colors.primaryDark : colors.textMuted}
                     />
                   </Animated.View>
                   {showBadge ? (
-                    <View
-                      style={[
-                        styles.badge,
-                        { backgroundColor: colors.primary },
-                        isDarkMode ? shadowsThemed.glowLime : null,
-                      ]}
-                    >
+                    <View style={[styles.badge, { backgroundColor: colors.primary }, shadowsThemed.accentGlow]}>
                       <Text style={[styles.badgeText, { color: colors.black }]}>{cartCount > 9 ? '9+' : cartCount}</Text>
                     </View>
                   ) : null}
@@ -176,7 +158,7 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
           <Animated.View
             style={[
               styles.indicatorDot,
-              isDarkMode ? shadowsThemed.glowLime : null,
+              shadowsThemed.accentGlow,
               {
                 width: dotSize,
                 height: dotSize,

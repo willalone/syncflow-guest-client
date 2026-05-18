@@ -252,7 +252,7 @@ export default function DishDetailsScreen({
                       {canOrder ? (
                         <TouchableOpacity
                           onPress={() => onAddToCart(item.id, 1)}
-                          style={[styles.recoAddBtn, { backgroundColor: colors.primary }]}
+                          style={[styles.recoAddBtn, { backgroundColor: colors.primary }, shadowsThemed.accentGlow]}
                         >
                           <Ionicons name="add" size={18} color={colors.black} />
                         </TouchableOpacity>
@@ -287,11 +287,7 @@ export default function DishDetailsScreen({
               </View>
               <TouchableOpacity
                 onPress={() => onAddToCart(dish.id, qty, { modifiers: selectedModifiersList })}
-                style={[
-                  styles.addButton,
-                  { backgroundColor: colors.primary },
-                  isDarkMode ? shadowsThemed.glowLime : null,
-                ]}
+                style={[styles.addButton, { backgroundColor: colors.primary }, shadowsThemed.accentGlow]}
               >
                 <Text style={[styles.addText, { color: colors.black }]}>В корзину</Text>
                 <Text style={[styles.addPrice, { color: colors.black }]}>{lineTotal.toFixed(0)} ₽</Text>

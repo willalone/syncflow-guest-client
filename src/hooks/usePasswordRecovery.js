@@ -86,7 +86,7 @@ export function usePasswordRecovery({ requestPasswordRecovery, confirmPasswordRe
       setRecoverySuccess(
         pickServerMessage(
           response,
-          `Код из ${RECOVERY_CODE_LENGTH} цифр отправлен на почту. Действует ${RECOVERY_CODE_TTL_MINUTES} минут.`,
+          `Код из ${RECOVERY_CODE_LENGTH} цифр отправлен на почту. Введите его в течение ${RECOVERY_CODE_TTL_MINUTES} мин (срок действия кода, не время доставки письма).`,
         ),
       );
     } catch (error) {

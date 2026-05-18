@@ -36,17 +36,16 @@ export default function ThemeToggle({ colors }) {
         accessibilityState={{ checked: isDarkMode }}
         style={[
           styles.track,
-          isDarkMode ? shadows.glowSoft : null,
           {
             backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : glass.fill,
-            borderColor: isDarkMode ? glass.border : glass.border,
+            borderColor: glass.border,
           },
         ]}
       >
         <Animated.View
           style={[
             styles.thumb,
-            isDarkMode ? shadows.glowLime : null,
+            isDarkMode ? shadows.accentGlow : shadows.accentGlowLilac,
             {
               backgroundColor: isDarkMode ? colors.primary : colors.white,
               transform: [{ translateX: thumbX }],
@@ -54,7 +53,7 @@ export default function ThemeToggle({ colors }) {
           ]}
         />
       </Pressable>
-      <Ionicons name="moon-outline" size={16} color={isDarkMode ? colors.primary : colors.textMuted} />
+      <Ionicons name="moon-outline" size={16} color={isDarkMode ? colors.primaryDark : colors.textMuted} />
       <Text style={[styles.label, { color: colors.textMuted }]}>{isDarkMode ? 'Тёмная' : 'Светлая'}</Text>
     </View>
   );
@@ -77,11 +76,6 @@ const styles = StyleSheet.create({
     width: THUMB,
     height: THUMB,
     borderRadius: THUMB / 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 2,
   },
   label: {
     fontFamily: fontFamily.sansMedium,

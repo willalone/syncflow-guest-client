@@ -12,6 +12,7 @@ export default function SurfaceCard({
   padding = layout.cardPadding,
   radius = borderRadius.xl,
   elevated = true,
+  shadowVariant = 'cardFloat',
   mode = 'frosted',
 }) {
   return (
@@ -22,6 +23,7 @@ export default function SurfaceCard({
       radius={radius}
       elevated={elevated}
       shadows={shadows}
+      shadowVariant={shadowVariant}
       mode={mode}
     >
       {children}

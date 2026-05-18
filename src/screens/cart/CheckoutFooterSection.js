@@ -158,7 +158,10 @@ export default function CheckoutFooterSection({
           {recommended.map((item) => (
             <View key={item.id} style={[styles.recoRow, { borderColor: colors.hairline, backgroundColor: colors.cardElevated }]}>
               <Text style={[styles.recoName, { color: colors.text }]}>{item.title}</Text>
-              <TouchableOpacity onPress={() => onAddToCart?.(item.id, 1)} style={[styles.recoBtn, { backgroundColor: colors.primary }]}>
+              <TouchableOpacity
+                onPress={() => onAddToCart?.(item.id, 1)}
+                style={[styles.recoBtn, { backgroundColor: colors.primary }, shadows?.accentGlow]}
+              >
                 <Text style={{ color: colors.black, fontWeight: '700' }}>+</Text>
               </TouchableOpacity>
             </View>
@@ -169,7 +172,11 @@ export default function CheckoutFooterSection({
       <TouchableOpacity
         onPress={handleCheckout}
         disabled={!canSubmit}
-        style={[styles.button, { backgroundColor: canSubmit ? colors.primary : colors.textMuted }]}
+        style={[
+          styles.button,
+          { backgroundColor: canSubmit ? colors.primary : colors.textMuted },
+          canSubmit ? shadows?.accentGlow : null,
+        ]}
       >
         <Text style={[styles.buttonText, { color: canSubmit ? colors.black : colors.white }]}>
           {checkoutDisabled ? 'Нет сети' : orderType === 'booking' ? 'Перейти к бронированию' : 'Оформить и оплатить'}

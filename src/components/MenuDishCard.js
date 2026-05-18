@@ -2,9 +2,9 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { borderRadius, layout, spacing, typography } from '../constants/theme';
-import { useTheme } from '../contexts/ThemeContext';
 import DishImage from './DishImage';
 import SurfaceCard from './ui/SurfaceCard';
+import CardDropShadow from './ui/CardDropShadow';
 import { getRoleBadge, getRoleColor, getRoleLabel } from '../utils/dishBadges';
 
 export default function MenuDishCard({
@@ -19,14 +19,24 @@ export default function MenuDishCard({
   showFavorite = true,
   priceSuffix = ' ₽',
 }) {
-  const { isDarkMode } = useTheme();
   const role = useMemo(() => getRoleBadge(dish), [dish]);
   const showHit = ['Локомотив', 'Премиум-якорь'].includes(role);
   const imageSize = isCompact ? 80 : 96;
 
   return (
-    <TouchableOpacity activeOpacity={0.9} onPress={() => onPress(dish)} style={isTablet ? styles.wrapTablet : styles.wrap}>
-      <SurfaceCard colors={colors} shadows={shadowsThemed} radius={borderRadius['2xl']} style={styles.card}>
+    <CardDropShadow
+      radius={borderRadius['2xl']}
+      backgroundColor={colors.card}
+      style={isTablet ? styles.wrapTablet : styles.wrap}
+    >
+      <TouchableOpacity activeOpacity={0.9} onPress={() => onPress(dish)}>
+        <SurfaceCard
+          colors={colors}
+          shadows={shadowsThemed}
+          radius={borderRadius['2xl']}
+          elevated={false}
+          style={[styles.card, { backgroundColor: colors.card }]}
+        >
         <View style={[styles.row, isCompact ? styles.rowCompact : null]}>
           <View
             style={[
@@ -81,35 +91,31 @@ export default function MenuDishCard({
                 {dish.price}
                 {priceSuffix}
               </Text>
-              <View
-                style={[
-                  styles.addFab,
-                  { backgroundColor: colors.primary },
-                  isDarkMode && shadowsThemed?.glowLime ? shadowsThemed.glowLime : null,
-                ]}
-              >
+              <View style={[styles.addFab, { backgroundColor: colors.primary }, shadowsThemed?.accentGlow]}>
                 <Ionicons name="add" size={22} color={colors.black} />
               </View>
             </View>
           </View>
         </View>
-      </SurfaceCard>
-    </TouchableOpacity>
+        </SurfaceCard>
+      </TouchableOpacity>
+    </CardDropShadow>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   wrapTablet: {
     flex: 1,
     minWidth: 0,
     marginHorizontal: spacing.xs,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   card: {
     marginBottom: 0,
+    backgroundColor: 'transparent',
   },
   row: {
     flexDirection: 'row',

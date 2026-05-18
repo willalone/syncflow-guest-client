@@ -48,31 +48,9 @@ export const getGlassTokens = (isDarkMode = false) => ({
   blurIntensity: isDarkMode ? 38 : 52,
   fill: isDarkMode ? 'rgba(42, 36, 54, 0.62)' : 'rgba(255, 255, 255, 0.58)',
   fillStrong: isDarkMode ? 'rgba(48, 42, 62, 0.78)' : 'rgba(255, 255, 255, 0.78)',
-  border: isDarkMode ? 'rgba(226, 198, 251, 0.2)' : 'rgba(255, 255, 255, 0.75)',
-  borderSoft: isDarkMode ? 'rgba(226, 198, 251, 0.1)' : 'rgba(255, 255, 255, 0.45)',
+  border: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.75)',
+  borderSoft: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.45)',
 });
-
-/** Мягкое свечение для тёмной темы (благородные лиловые / лаймовые акценты). */
-export const getGlowTokens = (isDarkMode = false) => {
-  if (!isDarkMode) {
-    return {
-      enabled: false,
-      lilac: 'transparent',
-      lilacSoft: 'transparent',
-      lime: 'transparent',
-      limeSoft: 'transparent',
-      rim: 'transparent',
-    };
-  }
-  return {
-    enabled: true,
-    lilac: 'rgba(226, 198, 251, 0.55)',
-    lilacSoft: 'rgba(210, 180, 245, 0.14)',
-    lime: 'rgba(221, 234, 122, 0.62)',
-    limeSoft: 'rgba(196, 227, 90, 0.16)',
-    rim: 'rgba(236, 228, 255, 0.28)',
-  };
-};
 
 export const spacing = {
   xs: 4,
@@ -173,6 +151,40 @@ export const typography = {
   },
 };
 
+/**
+ * Drop shadow карточек (Figma: X93 Y133 Blur250 Spread33).
+ * offsetX < 0 и большой insetRight → тень только вниз-влево; blur через слои в CardDropShadow.
+ */
+export const getCardDropShadowSpec = (isDarkMode = false) => {
+  const scale = 0.18;
+  const offsetX = -Math.round(93 * scale);
+  const offsetY = Math.round(133 * scale);
+  return {
+    offsetX,
+    offsetY,
+    blur: Math.round(250 * scale),
+    spread: Math.max(5, Math.round(33 * scale)),
+    /** Сжимает подложку справа — тень не «уезжает» в правый нижний угол. */
+    insetRight: 28,
+    opacity: isDarkMode ? 0.47 : 0.25,
+    color: '#000000',
+  };
+};
+
+/** Лёгкий native-слой (только iOS, в ту же сторону). */
+export const getCardDropShadowNativeStyle = (isDarkMode = false) => {
+  const spec = getCardDropShadowSpec(isDarkMode);
+  if (Platform.OS !== 'ios') {
+    return { elevation: 0 };
+  }
+  return {
+    shadowColor: spec.color,
+    shadowOffset: { width: spec.offsetX, height: spec.offsetY },
+    shadowOpacity: spec.opacity * 0.35,
+    shadowRadius: spec.blur,
+  };
+};
+
 /** Мягкие тени; float — «воздух» под карточками без жёсткого стикера. */
 export const getShadows = (isDarkMode = false) => {
   const tint = isDarkMode ? '#1A1028' : '#6B5080';
@@ -201,10 +213,11 @@ export const getShadows = (isDarkMode = false) => {
     float: {
       shadowColor: tint,
       shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: isDarkMode ? 0.38 : 0.07,
+      shadowOpacity: isDarkMode ? 0.32 : 0.07,
       shadowRadius: 16,
       elevation: 6,
     },
+    cardFloat: getCardDropShadowNativeStyle(isDarkMode),
     sticker: {
       shadowColor: tint,
       shadowOffset: { width: 0, height: 3 },
@@ -214,48 +227,29 @@ export const getShadows = (isDarkMode = false) => {
     },
     glass: {
       shadowColor: isDarkMode ? '#000000' : '#5A4868',
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: isDarkMode ? 0.28 : 0.1,
-      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: isDarkMode ? 0.22 : 0.09,
+      shadowRadius: 18,
       elevation: 5,
     },
-    /** Тёмная тема: мягкое свечение вокруг карточек и акцентов. */
-    glowSoft: isDarkMode
-      ? {
-          shadowColor: '#C9A8E8',
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.38,
-          shadowRadius: 14,
-          elevation: 4,
-        }
-      : {},
-    glowLilac: isDarkMode
-      ? {
-          shadowColor: '#DEC4F5',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.5,
-          shadowRadius: 16,
-          elevation: 6,
-        }
-      : {},
-    glowLime: isDarkMode
-      ? {
-          shadowColor: '#DDEA7A',
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: 0.55,
-          shadowRadius: 12,
-          elevation: 5,
-        }
-      : {},
-    glowAccent: isDarkMode
-      ? {
-          shadowColor: '#E2C6FB',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.42,
-          shadowRadius: 18,
-          elevation: 7,
-        }
-      : {},
+    /**
+     * Мягкое свечение мелких акцентов (чип, FAB, CTA, ползунок).
+     * Смещение вниз + небольшой radius — без «ореола-размытия» (offset 0,0).
+     */
+    accentGlow: {
+      shadowColor: isDarkMode ? '#D8EA78' : '#9BB42E',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: isDarkMode ? 0.48 : 0.38,
+      shadowRadius: 7,
+      elevation: 4,
+    },
+    accentGlowLilac: {
+      shadowColor: isDarkMode ? '#D4B8F0' : '#B898E0',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: isDarkMode ? 0.4 : 0.32,
+      shadowRadius: 7,
+      elevation: 3,
+    },
   };
 };
 
@@ -265,10 +259,10 @@ export const shadows = getShadows(false);
 export const getScreenGradient = (isDarkMode = false) =>
   isDarkMode
     ? {
-        colors: ['#0C0A10', '#181420', '#221A2E', '#141018'],
-        locations: [0, 0.38, 0.72, 1],
+        colors: ['#141018', '#1C1824', '#181620'],
+        locations: [0, 0.55, 1],
         start: { x: 0, y: 0 },
-        end: { x: 1, y: 1 },
+        end: { x: 0, y: 1 },
       }
     : {
         colors: ['#FFFEFF', '#EFE6F7', '#F8F4FB'],

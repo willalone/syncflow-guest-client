@@ -57,10 +57,10 @@ export default function PasswordRecoveryModal({
             <Text style={[styles.recoveryTitle, { color: colors.text }]}>Восстановление пароля</Text>
             <Text style={[styles.recoveryHint, { color: colors.textMuted }]}>
               {isVerify
-                ? `Код из письма (${RECOVERY_CODE_TTL_MINUTES} мин). Затем новый пароль — от ${RECOVERY_MIN_PASSWORD_LENGTH} символов.`
+                ? `Введите код из письма. Он действует ${RECOVERY_CODE_TTL_MINUTES} мин с момента отправки. Новый пароль — от ${RECOVERY_MIN_PASSWORD_LENGTH} символов.`
                 : recoveryLoading
-                  ? 'Отправка письма на сервере может занять 1–3 минуты. Не закрывайте окно — поля для кода появятся только после успешного ответа.'
-                  : 'Укажите email, привязанный к аккаунту, и нажмите «Отправить код».'}
+                  ? 'Сервер отправляет письмо — обычно 30 сек – 3 мин. Не закрывайте окно: поля для кода появятся после ответа сервера.'
+                  : 'Укажите email аккаунта и нажмите «Отправить код». Письмо приходит отдельно от срока «15 мин» — это время, чтобы ввести код после получения.'}
             </Text>
 
             <TextInput

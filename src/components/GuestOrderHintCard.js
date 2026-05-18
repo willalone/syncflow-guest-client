@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { borderRadius, spacing, typography } from '../constants/theme';
+import { borderRadius, getShadows, spacing, typography } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function GuestOrderHintCard({ colors, onOpenAuth }) {
+  const { isDarkMode } = useTheme();
+  const shadows = useMemo(() => getShadows(isDarkMode), [isDarkMode]);
   return (
     <View style={[styles.card, { borderColor: colors.hairline, backgroundColor: colors.cardElevated }]}>
       <Text style={[styles.title, { color: colors.text }]}>Чтобы оформить заказ, нужно войти</Text>
@@ -12,7 +15,7 @@ export default function GuestOrderHintCard({ colors, onOpenAuth }) {
       {typeof onOpenAuth === 'function' ? (
         <TouchableOpacity
           onPress={onOpenAuth}
-          style={[styles.button, { backgroundColor: colors.primary }]}
+          style={[styles.button, { backgroundColor: colors.primary }, shadows.accentGlow]}
           activeOpacity={0.9}
         >
           <Text style={[styles.buttonText, { color: colors.black }]}>Войти / Регистрация</Text>

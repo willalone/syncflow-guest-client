@@ -1,7 +1,7 @@
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { borderRadius, getGlassTokens, getGlowTokens, layout } from '../../constants/theme';
+import { borderRadius, getColors, getGlassTokens, layout } from '../../constants/theme';
 import { useTheme } from '../../contexts/ThemeContext';
 
 /**
@@ -17,22 +17,30 @@ export default function GlassCard({
   mode = 'frosted',
   shadows,
   elevated = true,
+  shadowVariant = 'cardFloat',
 }) {
   const { isDarkMode } = useTheme();
+  const colors = getColors(isDarkMode);
   const glass = getGlassTokens(isDarkMode);
-  const glow = getGlowTokens(isDarkMode);
+  const elevationShadow =
+    elevated && shadows ? shadows[shadowVariant] || shadows.cardFloat || shadows.float : null;
 
-  const shellStyle = [
-    styles.shell,
-    elevated && shadows ? shadows.glass : null,
-    elevated && isDarkMode && shadows ? shadows.glowSoft : null,
-    {
-      borderRadius: radius,
-      borderColor: glass.border,
-      ...(glow.enabled ? { borderWidth: StyleSheet.hairlineWidth * 2 } : null),
-    },
-    style,
-  ];
+  const shellStyle = [styles.shell, { borderRadius: radius, borderColor: glass.border }, style];
+
+  const wrapElevated = (node) => {
+    if (!elevationShadow) return node;
+    return (
+      <View
+        style={[
+          styles.shadowWrap,
+          elevationShadow,
+          { borderRadius: radius, backgroundColor: colors.card },
+        ]}
+      >
+        {node}
+      </View>
+    );
+  };
 
   const tintLayer = (
     <View
@@ -51,7 +59,7 @@ export default function GlassCard({
   );
 
   if (mode === 'blur') {
-    return (
+    return wrapElevated(
       <View style={shellStyle}>
         <BlurView
           intensity={glass.blurIntensity}
@@ -60,49 +68,26 @@ export default function GlassCard({
           style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}
         />
         {tintLayer}
-        {glow.enabled ? (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.rimGlow,
-              {
-                borderTopLeftRadius: radius,
-                borderTopRightRadius: radius,
-                borderColor: glow.rim,
-              },
-            ]}
-          />
-        ) : null}
         {content}
       </View>
     );
   }
 
-  return (
+  return wrapElevated(
     <View style={[shellStyle, { backgroundColor: glass.fill, overflow: 'hidden' }]}>
       <View
         pointerEvents="none"
         style={[styles.topHighlight, { borderTopLeftRadius: radius, borderTopRightRadius: radius, backgroundColor: glass.borderSoft }]}
       />
-      {glow.enabled ? (
-        <View
-          pointerEvents="none"
-          style={[
-            styles.rimGlow,
-            {
-              borderTopLeftRadius: radius,
-              borderTopRightRadius: radius,
-              borderColor: glow.rim,
-            },
-          ]}
-        />
-      ) : null}
       {content}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shadowWrap: {
+    overflow: 'visible',
+  },
   shell: {
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
@@ -117,13 +102,5 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-  },
-  rimGlow: {
-    position: 'absolute',
-    top: 0,
-    left: 12,
-    right: 12,
-    height: StyleSheet.hairlineWidth * 2,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
 });

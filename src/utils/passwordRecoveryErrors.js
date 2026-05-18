@@ -42,7 +42,7 @@ export function messageForRecoveryConfirmError(error) {
     return 'Не получилось связаться с сервером. Проверьте интернет и повторите попытку.';
   }
   if (status === 401) {
-    return `Код неверный или истёк (действует ${RECOVERY_CODE_TTL_MINUTES} минут). Запросите новый код.`;
+    return `Код неверный или истёк (срок действия ${RECOVERY_CODE_TTL_MINUTES} мин с отправки). Запросите новый код.`;
   }
   if (status === 404) {
     return 'Аккаунт с этим email не найден. Проверьте адрес и попробуйте снова.';
