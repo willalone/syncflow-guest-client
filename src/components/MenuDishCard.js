@@ -14,6 +14,7 @@ export default function MenuDishCard({
   isCompact,
   isTablet,
   onPress,
+  onAddToCart,
   favorites = [],
   onToggleFavorite,
   showFavorite = true,
@@ -29,44 +30,47 @@ export default function MenuDishCard({
       backgroundColor={colors.card}
       style={isTablet ? styles.wrapTablet : styles.wrap}
     >
-      <TouchableOpacity activeOpacity={0.9} onPress={() => onPress(dish)}>
-        <SurfaceCard
-          colors={colors}
-          shadows={shadowsThemed}
-          radius={borderRadius['2xl']}
-          elevated={false}
-          style={[styles.card, { backgroundColor: colors.card }]}
-        >
+      <SurfaceCard
+        colors={colors}
+        shadows={shadowsThemed}
+        radius={borderRadius['2xl']}
+        elevated={false}
+        style={[styles.card, { backgroundColor: colors.card }]}
+      >
         <View style={[styles.row, isCompact ? styles.rowCompact : null]}>
-          <View
-            style={[
-              styles.imageWrap,
-              {
-                width: imageSize,
-                height: imageSize,
-                backgroundColor: colors.cardElevated,
-              },
-            ]}
-          >
-            <DishImage
-              uri={dish.imageUrl}
-              title={dish.title}
-              style={{ width: imageSize - 8, height: imageSize - 8, borderRadius: borderRadius.lg }}
-              borderRadius={borderRadius.lg}
-              contentFit="contain"
-            />
-            {showHit ? (
-              <View style={[styles.imageRoleBadge, { backgroundColor: `${getRoleColor(role)}E6` }]}>
-                <Text style={styles.imageRoleText}>{getRoleLabel(role)}</Text>
-              </View>
-            ) : null}
-          </View>
+          <TouchableOpacity activeOpacity={0.9} onPress={() => onPress(dish)} style={styles.imageTap}>
+            <View
+              style={[
+                styles.imageWrap,
+                {
+                  width: imageSize,
+                  height: imageSize,
+                  backgroundColor: colors.cardElevated,
+                },
+              ]}
+            >
+              <DishImage
+                uri={dish.imageUrl}
+                title={dish.title}
+                style={{ width: imageSize - 8, height: imageSize - 8, borderRadius: borderRadius.lg }}
+                borderRadius={borderRadius.lg}
+                contentFit="contain"
+              />
+              {showHit ? (
+                <View style={[styles.imageRoleBadge, { backgroundColor: `${getRoleColor(role)}E6` }]}>
+                  <Text style={styles.imageRoleText}>{getRoleLabel(role)}</Text>
+                </View>
+              ) : null}
+            </View>
+          </TouchableOpacity>
 
           <View style={styles.content}>
             <View style={styles.nameRow}>
-              <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.name, { color: colors.text }]}>
-                {dish.title}
-              </Text>
+              <TouchableOpacity activeOpacity={0.9} onPress={() => onPress(dish)} style={styles.titleTap}>
+                <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.name, { color: colors.text }]}>
+                  {dish.title}
+                </Text>
+              </TouchableOpacity>
               {showFavorite ? (
                 <TouchableOpacity onPress={() => onToggleFavorite?.(dish.id)} hitSlop={12}>
                   <Ionicons
@@ -77,43 +81,66 @@ export default function MenuDishCard({
                 </TouchableOpacity>
               ) : null}
             </View>
-            {dish.weight ? (
-              <Text numberOfLines={1} style={[styles.meta, { color: colors.textMuted }]}>
-                {dish.weight}
-              </Text>
-            ) : dish.description ? (
-              <Text numberOfLines={1} style={[styles.meta, { color: colors.textMuted }]}>
-                {dish.description}
-              </Text>
-            ) : null}
+            <TouchableOpacity activeOpacity={0.9} onPress={() => onPress(dish)}>
+              {dish.weight ? (
+                <Text numberOfLines={1} style={[styles.meta, { color: colors.textMuted }]}>
+                  {dish.weight}
+                </Text>
+              ) : dish.description ? (
+                <Text numberOfLines={1} style={[styles.meta, { color: colors.textMuted }]}>
+                  {dish.description}
+                </Text>
+              ) : null}
+            </TouchableOpacity>
             <View style={styles.footer}>
-              <Text style={[styles.price, { color: colors.primaryDark }]}>
-                {dish.price}
-                {priceSuffix}
-              </Text>
-              <View style={[styles.addFab, { backgroundColor: colors.primary }, shadowsThemed?.accentGlow]}>
-                <Ionicons name="add" size={22} color={colors.black} />
-              </View>
+              <TouchableOpacity activeOpacity={0.9} onPress={() => onPress(dish)} style={styles.priceTap}>
+                <Text style={[styles.price, { color: colors.primaryDark }]}>
+                  {dish.price}
+                  {priceSuffix}
+                </Text>
+              </TouchableOpacity>
+              {onAddToCart ? (
+                <TouchableOpacity
+                  onPress={() => onAddToCart(dish.id, 1)}
+                  activeOpacity={0.88}
+                  hitSlop={10}
+                  accessibilityLabel="Добавить в корзину"
+                  style={[styles.addFab, { backgroundColor: colors.primary }, shadowsThemed?.accentGlow]}
+                >
+                  <Ionicons name="add" size={22} color={colors.black} />
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
         </View>
-        </SurfaceCard>
-      </TouchableOpacity>
+      </SurfaceCard>
     </CardDropShadow>
   );
 }
 
 const styles = StyleSheet.create({
+  imageTap: {
+    alignSelf: 'center',
+  },
+  titleTap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  priceTap: {
+    flexShrink: 1,
+  },
   wrap: {
-    marginBottom: spacing.sm,
+    width: '100%',
+    alignSelf: 'stretch',
+    marginBottom: spacing.xs,
   },
   wrapTablet: {
     flex: 1,
     minWidth: 0,
-    marginHorizontal: spacing.xs,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   card: {
+    width: '100%',
     marginBottom: 0,
     backgroundColor: 'transparent',
   },

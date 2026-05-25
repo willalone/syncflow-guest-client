@@ -4,6 +4,7 @@ import * as clientApi from '../services/api/clientApi';
 import { runtimeConfig } from '../config/runtimeConfig';
 import { normalizeMenuClientPayload, normalizeTablesClientPayload } from '../utils/resolveMediaUrl';
 import { logger } from '../utils/logger';
+import { sanitizeCartItems } from '../utils/cart';
 import {
   cartKey,
   menuCacheKey,
@@ -55,9 +56,16 @@ export function useClientDataBootstrap({
           readJson(cartKey(userId), []),
         ]);
 
-        if (cachedMenu?.data && !cancelled) setMenu(normalizeMenuClientPayload(cachedMenu.data));
+        const cachedMenuData = cachedMenu?.data ? normalizeMenuClientPayload(cachedMenu.data) : null;
+        if (cachedMenuData && !cancelled) setMenu(cachedMenuData);
         if (cachedTables?.data && !cancelled) setTables(normalizeTablesClientPayload(cachedTables.data));
-        if (Array.isArray(cartRaw) && !cancelled) setCartItems(cartRaw);
+        if (Array.isArray(cartRaw) && !cancelled) {
+          const sanitizedCart = sanitizeCartItems(cartRaw, cachedMenuData?.dishes || []);
+          setCartItems(sanitizedCart);
+          if (sanitizedCart.length !== cartRaw.length) {
+            writeJson(cartKey(userId), sanitizedCart);
+          }
+        }
 
         if (isAuthenticated && cachedUserScope?.data) {
           const {
@@ -92,7 +100,16 @@ export function useClientDataBootstrap({
             try {
               const menuRaw = await clientApi.fetchMenu();
               const menuData = normalizeMenuClientPayload(menuRaw);
-              if (!cancelled) setMenu(menuData);
+              if (!cancelled) {
+                setMenu(menuData);
+                const storedCart = await readJson(cartKey(userId), []);
+                const cartList = Array.isArray(storedCart) ? storedCart : [];
+                const sanitizedCart = sanitizeCartItems(cartList, menuData.dishes || []);
+                setCartItems(sanitizedCart);
+                if (sanitizedCart.length !== cartList.length) {
+                  await writeJson(cartKey(userId), sanitizedCart);
+                }
+              }
               await writeJson(menuCacheKey, { updatedAt: Date.now(), data: menuData });
             } catch (e) {
               const msg = String(e?.message || e || '');

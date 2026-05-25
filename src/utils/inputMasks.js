@@ -16,20 +16,39 @@ export function applyTimeMask(value) {
   return `${hh}:${mm}`;
 }
 
+/** Шаблон: +7(___)___-__-__ */
+export const PHONE_MASK_PREFIX = '+7(';
+export const PHONE_MASK_MAX_LENGTH = 18;
+
+function extractRuPhoneDigits(value) {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (!digits.length) return '7';
+  if (digits.startsWith('8')) digits = `7${digits.slice(1)}`;
+  if (!digits.startsWith('7')) digits = `7${digits}`;
+  return digits.slice(0, 11);
+}
+
 export function applyPhoneMask(value) {
-  const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
-  const normalized = digits.startsWith('7') ? digits : `7${digits.slice(0, 10)}`;
-  const p = normalized.slice(1);
-  const a = p.slice(0, 3);
-  const b = p.slice(3, 6);
-  const c = p.slice(6, 8);
-  const d = p.slice(8, 10);
-  let result = '+7';
-  if (a) result += ` ${a}`;
-  if (b) result += ` ${b}`;
-  if (c) result += `-${c}`;
-  if (d) result += `-${d}`;
+  const raw = String(value ?? '');
+  const digits = extractRuPhoneDigits(raw);
+  const local = digits.slice(1);
+  if (!local.length) return PHONE_MASK_PREFIX;
+
+  const a = local.slice(0, 3);
+  const b = local.slice(3, 6);
+  const c = local.slice(6, 8);
+  const d = local.slice(8, 10);
+
+  let result = `${PHONE_MASK_PREFIX}${a}`;
+  if (a.length === 3) result += ')';
+  if (b) result += b;
+  if (b.length === 3 && c) result += `-${c}`;
+  if (c.length === 2 && d) result += `-${d}`;
   return result;
+}
+
+export function isValidPhoneMask(value) {
+  return extractRuPhoneDigits(value).length === 11;
 }
 
 export function isValidDateMask(value) {

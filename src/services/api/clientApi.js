@@ -30,8 +30,14 @@ async function callStrict(methodName, args) {
 export const fetchMenu = (...args) => httpApi.fetchMenu(...args);
 export const fetchMenuRecommended = (...args) => httpApi.fetchMenuRecommended(...args);
 export const fetchTables = (...args) => callWithFallback('fetchTables', args);
+export const fetchAllTables = (...args) => callWithFallback('fetchAllTables', args);
 export const fetchBookings = (...args) => callWithFallback('fetchBookings', args);
-export const fetchOrders = (...args) => callWithFallback('fetchOrders', args);
+export async function fetchOrders(...args) {
+  const rows = await callWithFallback('fetchOrders', args);
+  const userId = args[0];
+  const { enrichOrdersWithReviewState } = await import('../../utils/orderReviews');
+  return enrichOrdersWithReviewState(rows, userId);
+}
 export const fetchUserProfile = (...args) => callWithFallback('fetchUserProfile', args);
 export const fetchFavorites = (...args) => callWithFallback('fetchFavorites', args);
 export const fetchNotifications = (...args) => callWithFallback('fetchNotifications', args);
@@ -44,7 +50,23 @@ export const createOrder = (...args) => callStrict('createOrder', args);
 export const updateUserProfile = (...args) => callStrict('updateUserProfile', args);
 export const toggleFavorite = (...args) => callStrict('toggleFavorite', args);
 export const payOrder = (...args) => callStrict('payOrder', args);
-export const submitOrderReview = (...args) => callStrict('submitOrderReview', args);
+export async function submitOrderReview(...args) {
+  const [orderId, payload, userId] = args;
+  const { assertCanReviewOrder, markOrderAsReviewed } = await import('../../utils/orderReviews');
+  await assertCanReviewOrder(userId, orderId);
+  try {
+    const result = await callStrict('submitOrderReview', args);
+    await markOrderAsReviewed(userId, orderId, payload);
+    return result;
+  } catch (error) {
+    const msg = String(error?.message || '');
+    if (/уже|409|already|отправлен/i.test(msg)) {
+      await markOrderAsReviewed(userId, orderId, payload);
+      return { ok: true, alreadyReviewed: true };
+    }
+    throw error;
+  }
+}
 export const registerPushDevice = (...args) => callStrict('registerPushDevice', args);
 export const unregisterPushDevice = (...args) => callStrict('unregisterPushDevice', args);
 

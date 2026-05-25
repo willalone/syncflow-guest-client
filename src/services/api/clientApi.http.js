@@ -8,6 +8,8 @@ export const fetchMenu = (...args) => impl.fetchMenu(...args);
 export const fetchMenuRecommended = (...args) =>
   typeof impl.fetchMenuRecommended === 'function' ? impl.fetchMenuRecommended(...args) : impl.fetchMenu().then((m) => m.dishes.slice(0, 5));
 export const fetchTables = (...args) => impl.fetchTables(...args);
+export const fetchAllTables = (...args) =>
+  typeof impl.fetchAllTables === 'function' ? impl.fetchAllTables(...args) : impl.fetchTables(...args);
 export const createBooking = (...args) => impl.createBooking(...args);
 export const fetchBookings = (...args) => impl.fetchBookings(...args);
 export const fetchOrders = (...args) => impl.fetchOrders(...args);

@@ -14,6 +14,56 @@ function preorderNoteFromDetailedItem(row) {
 
 const OFFLINE_CHECKOUT_MSG = 'Нет соединения с интернетом. Дождитесь восстановления сети и повторите.';
 
+async function applySyncflowOrderExtras({
+  createdOrder,
+  checkoutOptions,
+  showToast,
+  spendGuestBonus,
+}) {
+  if (
+    runtimeConfig.integratedBackend !== 'syncflow' ||
+    runtimeConfig.useMockApi ||
+    createdOrder?.id == null ||
+    !Number.isFinite(Number(createdOrder.id))
+  ) {
+    return null;
+  }
+  const orderId = Number(createdOrder.id);
+  if (checkoutOptions?.appliedPromo?.code) {
+    try {
+      await clientApi.applyPromoToOrder(orderId, checkoutOptions.appliedPromo.code);
+    } catch (e) {
+      showToast(
+        'error',
+        e?.message || 'Заказ создан, но промокод не удалось применить. Можно попробовать в истории заказов.'
+      );
+    }
+  }
+  try {
+    await clientApi.tryApplyGuestPersonalDiscount(orderId);
+  } catch {
+    // гость может не иметь права на /discounts
+  }
+  if (checkoutOptions?.useLoyaltyPoints && Number(checkoutOptions.pointsToSpend || 0) > 0) {
+    try {
+      await spendGuestBonus({
+        amount: Number(checkoutOptions.pointsToSpend),
+        orderId,
+      });
+    } catch (e) {
+      showToast(
+        'error',
+        e?.message || 'Заказ создан, но бонусы не удалось списать. Попробуйте позже или обратитесь в ресторан.'
+      );
+    }
+  }
+  try {
+    return await clientApi.fetchOrderSummary(orderId);
+  } catch {
+    return null;
+  }
+}
+
 export function useCheckoutFlow({
   cartItems,
   menuDishes,
@@ -85,66 +135,12 @@ export function useCheckoutFlow({
           appliedPromo: options.appliedPromo || null,
           promoDiscountRub: options.promoDiscountRub ?? 0,
         });
-        if (
-          runtimeConfig.integratedBackend === 'syncflow' &&
-          !runtimeConfig.useMockApi &&
-          options.appliedPromo?.code &&
-          createdOrder?.id != null &&
-          Number.isFinite(Number(createdOrder.id))
-        ) {
-          try {
-            await clientApi.applyPromoToOrder(Number(createdOrder.id), options.appliedPromo.code);
-          } catch (e) {
-            showToast(
-              'error',
-              e?.message || 'Заказ создан, но промокод не удалось применить. Можно попробовать в истории заказов.'
-            );
-          }
-        }
-        if (
-          runtimeConfig.integratedBackend === 'syncflow' &&
-          !runtimeConfig.useMockApi &&
-          createdOrder?.id != null &&
-          Number.isFinite(Number(createdOrder.id))
-        ) {
-          try {
-            await clientApi.tryApplyGuestPersonalDiscount(Number(createdOrder.id));
-          } catch {
-            // гость может не иметь права на /discounts — сервер может применить скидку сам
-          }
-        }
-        if (
-          runtimeConfig.integratedBackend === 'syncflow' &&
-          options.useLoyaltyPoints &&
-          Number(options.pointsToSpend || 0) > 0 &&
-          createdOrder?.id != null &&
-          Number.isFinite(Number(createdOrder.id))
-        ) {
-          try {
-            await spendGuestBonus({
-              amount: Number(options.pointsToSpend),
-              orderId: Number(createdOrder.id),
-            });
-          } catch (e) {
-            showToast(
-              'error',
-              e?.message || 'Заказ создан, но бонусы не удалось списать. Попробуйте позже или обратитесь в ресторан.'
-            );
-          }
-        }
-        let orderSummary = null;
-        if (
-          runtimeConfig.integratedBackend === 'syncflow' &&
-          !runtimeConfig.useMockApi &&
-          createdOrder?.id != null &&
-          Number.isFinite(Number(createdOrder.id))
-        ) {
-          try {
-            orderSummary = await clientApi.fetchOrderSummary(Number(createdOrder.id));
-          } catch {
-            orderSummary = null;
-          }
-        }
+        const orderSummary = await applySyncflowOrderExtras({
+          createdOrder,
+          checkoutOptions: options,
+          showToast,
+          spendGuestBonus,
+        });
         await clearCart();
         navigateToScreen('Profile');
         if (createdOrder?.paymentStatus === 'pending' || createdOrder?.status === 'created') {
@@ -177,6 +173,8 @@ export function useCheckoutFlow({
           showToast('success', 'Бронирование успешно оформлено.');
           return { ok: true };
         }
+        const serveAt = `${payload?.date || ''} ${payload?.servingTime || payload?.time || ''}`.trim();
+
         if (runtimeConfig.integratedBackend === 'syncflow' && !runtimeConfig.useMockApi) {
           try {
             const lines = detailedItems
@@ -200,22 +198,18 @@ export function useCheckoutFlow({
             showToast('error', preorderMessage);
             return { ok: false, message: preorderMessage };
           }
-          await clearCart();
-          navigateToScreen('Profile');
-          showToast('success', 'Бронирование и предзаказ оформлены.');
-          return { ok: true };
         }
 
-        const serveAt = `${payload?.date || ''} ${payload?.servingTime || payload?.time || ''}`.trim();
         let createdOrder = null;
         try {
           createdOrder = await createOrder({
             items: detailedItems,
             total,
-            orderType: checkoutOptions?.orderType || 'booking',
+            orderType: 'booking',
             useLoyaltyPoints: Boolean(checkoutOptions?.useLoyaltyPoints),
             pointsToSpend: Number(checkoutOptions?.pointsToSpend || 0),
             bookingId: booking?.id || null,
+            reservationId: booking?.id || null,
             scheduledAt: serveAt,
             bookingDraft: payload,
           });
@@ -223,16 +217,24 @@ export function useCheckoutFlow({
           navigateToScreen('Profile');
           const orderMessage =
             orderError?.message ||
-            'Бронь создана, но предзаказ не удалось оформить. Проверьте историю заказов и повторите попытку.';
+            'Бронь создана, но заказ по предзаказу не удалось оформить. Проверьте раздел «Заказы» и повторите попытку.';
           showToast('error', orderMessage);
           return { ok: false, message: orderMessage };
         }
+
+        const orderSummary = await applySyncflowOrderExtras({
+          createdOrder,
+          checkoutOptions,
+          showToast,
+          spendGuestBonus,
+        });
+
         await clearCart();
         navigateToScreen('Profile');
         if (createdOrder?.paymentStatus === 'pending' || createdOrder?.status === 'created') {
-          setPaymentPrompt({ visible: true, orderId: createdOrder.id, summary: null });
+          setPaymentPrompt({ visible: true, orderId: createdOrder.id, summary: orderSummary });
         } else {
-          showToast('success', 'Бронирование и заказ успешно оформлены.');
+          showToast('success', 'Бронирование и заказ с предзаказом оформлены.');
         }
         return { ok: true };
       } catch (error) {

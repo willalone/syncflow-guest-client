@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { borderRadius, getColors, getShadows, layout, spacing, typography } from '../constants/theme';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { useTheme } from '../contexts/ThemeContext';
+import * as clientApi from '../services/api/clientApi';
+import { normalizeTablesClientPayload } from '../utils/resolveMediaUrl';
+import { mergeTableCatalog, readHallTableCatalog, writeHallTableCatalog } from '../utils/tableCatalog';
 import { applyDateMask, isValidDateMask, isValidTimeMask } from '../utils/inputMasks';
 import { DEFAULT_VENUE_LABEL } from '../constants/venue';
 import BookingFormSection from './booking/BookingFormSection';
@@ -67,15 +69,39 @@ export default function BookingScreen({
   const [status, setStatus] = useState('');
   const [servingTime, setServingTime] = useState('19:30');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [allTables, setAllTables] = useState([]);
+  const [allTablesLoading, setAllTablesLoading] = useState(true);
 
   useEffect(() => {
-    tables.forEach((table) => {
-      const u = table?.imageUrl && String(table.imageUrl).trim();
-      if (u && !u.startsWith('data:')) {
-        ExpoImage.prefetch(u, 'memory-disk').catch(() => null);
+    let cancelled = false;
+    const loadCatalog = async () => {
+      setAllTablesLoading(true);
+      const cached = await readHallTableCatalog();
+      if (!cancelled && cached.length) {
+        setAllTables(normalizeTablesClientPayload(cached) || []);
       }
-    });
-  }, [tables]);
+      try {
+        const [dd, mm, yyyy] = String(date).split('.');
+        const dateIso =
+          dd && mm && yyyy && isValidDateMask(date) ? `${yyyy}-${mm}-${dd}` : undefined;
+        const raw = await clientApi.fetchAllTables(dateIso ? { date: dateIso } : {});
+        const fetched = normalizeTablesClientPayload(raw) || [];
+        const merged = mergeTableCatalog(cached, fetched);
+        if (!cancelled) {
+          setAllTables(merged);
+          if (merged.length) await writeHallTableCatalog(merged);
+        }
+      } catch {
+        if (!cancelled && !cached.length) setAllTables([]);
+      } finally {
+        if (!cancelled) setAllTablesLoading(false);
+      }
+    };
+    loadCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, [date]);
 
   const guestsCount = Math.max(1, Number(String(people).replace(/\D/g, '') || 1));
   const filteredTables = useMemo(() => {
@@ -276,8 +302,11 @@ export default function BookingScreen({
         <BookingTablesSection
           styles={styles}
           colors={colors}
+          isDarkMode={isDarkMode}
           filteredTables={filteredTables}
-          tables={tables}
+          availableTables={tables}
+          allTables={allTables}
+          allTablesLoading={allTablesLoading}
           selected={selected}
           setSelected={setSelected}
         />
@@ -344,14 +373,28 @@ const styles = StyleSheet.create({
   counterBtn: { width: 44, alignItems: 'center', justifyContent: 'center' },
   counterBtnText: { fontSize: 20, fontWeight: '700' },
   counterInput: { flex: 1, textAlign: 'center', ...typography.bodyLarge, fontWeight: '700' },
-  dateRow: { flexDirection: 'row', gap: spacing.sm },
-  dateInput: { flex: 1 },
+  dateRow: { flexDirection: 'row', alignItems: 'stretch', gap: spacing.sm },
+  dateInput: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
   calendarButton: {
-    minWidth: 48,
+    flexShrink: 0,
+    minWidth: 112,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    minHeight: 48,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: borderRadius.xl,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  calendarButtonText: {
+    ...typography.caption,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   calendar: { marginTop: spacing.xs, borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius.xl, padding: spacing.sm },
   calendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
@@ -362,6 +405,7 @@ const styles = StyleSheet.create({
   calendarCellText: { ...typography.caption },
   errorText: { ...typography.caption, marginTop: spacing.xs },
   subtitle: { ...typography.h4, marginTop: spacing.lg, marginBottom: spacing.sm },
+  floorHint: { ...typography.caption, marginBottom: spacing.sm },
   preorderHint: { ...typography.caption, marginBottom: spacing.sm },
   preorderCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: borderRadius['2xl'], padding: spacing.md, gap: spacing.xs },
   preorderLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
@@ -378,19 +422,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryBtnText: { ...typography.body, fontWeight: '600' },
-  tables: { gap: spacing.sm },
-  tableCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: borderRadius.xl,
-    padding: spacing.md,
-  },
-  tableImage: {
-    width: '100%',
-    height: 112,
-    marginBottom: spacing.sm,
-  },
-  tableName: { ...typography.bodyLarge, fontWeight: '600' },
-  tableInfo: { ...typography.caption, marginTop: spacing.xs },
   status: { ...typography.body, marginTop: spacing.md },
   button: {
     marginTop: spacing.lg,

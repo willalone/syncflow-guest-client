@@ -52,7 +52,12 @@ export async function fetchMenu() {
   };
 }
 
-export async function fetchTables() {
+export async function fetchTables(options = {}) {
+  const seats = Math.max(1, Number(options?.seats || 1));
+  return bookingTables.filter((t) => Number(t.seats || 0) >= seats);
+}
+
+export async function fetchAllTables() {
   return bookingTables;
 }
 

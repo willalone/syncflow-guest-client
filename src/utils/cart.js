@@ -49,6 +49,33 @@ export function buildCartPayableBreakdown({
   };
 }
 
-export function getCartCount(cartItems) {
-  return cartItems.reduce((sum, item) => sum + item.quantity, 0);
+/** Строки корзины с quantity > 0 и блюдом из актуального меню (без «мёртвых» id). */
+export function getValidCartItems(cartItems, dishes = []) {
+  if (!Array.isArray(cartItems)) return [];
+  const dishIds = new Set(
+    (Array.isArray(dishes) ? dishes : [])
+      .map((d) => String(d?.id ?? '').trim())
+      .filter(Boolean)
+  );
+  return cartItems.filter((item) => {
+    const qty = Number(item?.quantity ?? 0);
+    if (!Number.isFinite(qty) || qty <= 0) return false;
+    const id = String(item?.id ?? '').trim();
+    if (!id) return false;
+    if (dishIds.size === 0) return false;
+    return dishIds.has(id);
+  });
+}
+
+/** Число позиций в корзине: сумма quantity по всем строкам (4× одно блюдо = 4 позиции). */
+export function getCartCount(cartItems, dishes = []) {
+  return getValidCartItems(cartItems, dishes).reduce((sum, item) => {
+    const qty = Number(item?.quantity ?? 0);
+    return sum + (Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0);
+  }, 0);
+}
+
+/** Убирает пустые и устаревшие строки перед сохранением в AsyncStorage. */
+export function sanitizeCartItems(cartItems, dishes = []) {
+  return getValidCartItems(cartItems, dishes);
 }

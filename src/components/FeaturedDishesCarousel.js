@@ -12,7 +12,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import DishImage from './DishImage';
 import GlassCard from './ui/GlassCard';
 
-const GAP = 14;
+const GAP = 12;
 const FEATURED_SIZE = 5;
 
 function hashString(value) {
@@ -53,8 +53,9 @@ export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish
   const { isDarkMode } = useTheme();
   const { width } = useWindowDimensions();
   const scrollX = useRef(new Animated.Value(0)).current;
-  const cardW = Math.min(300, Math.max(248, width * 0.78));
-  const snap = cardW + GAP;
+  /** Компактная квадратная карточка: фото целиком (contain) + подпись внизу внутри квадрата. */
+  const cardSize = Math.min(188, Math.max(156, width * 0.44));
+  const snap = cardSize + GAP;
   const sidePad = spacing.lg;
 
   const featured = useMemo(() => {
@@ -120,17 +121,30 @@ export default function FeaturedDishesCarousel({ dishes = [], colors, onOpenDish
         })}
         scrollEventThrottle={16}
         renderItem={({ item }) => (
-          <TouchableOpacity activeOpacity={0.92} onPress={() => onOpenDish(item)} style={{ width: cardW }}>
-            <GlassCard mode="blur" shadows={shadows} radius={borderRadius['2xl']} padding={0} style={styles.cardShell}>
-              <DishImage
-                uri={item.imageUrl}
-                title={item.title}
-                style={styles.img}
-                borderRadius={borderRadius.xl}
-              />
+          <TouchableOpacity
+            activeOpacity={0.92}
+            onPress={() => onOpenDish(item)}
+            style={{ width: cardSize, height: cardSize }}
+          >
+            <GlassCard
+              mode="blur"
+              shadows={shadows}
+              radius={borderRadius['2xl']}
+              padding={0}
+              style={[styles.cardShell, { width: cardSize, height: cardSize }]}
+              innerStyle={styles.cardInner}
+            >
+              <View style={[styles.imageWrap, { backgroundColor: colors.cardElevated }]}>
+                <DishImage
+                  uri={item.imageUrl}
+                  title={item.title}
+                  style={styles.imgFill}
+                  borderRadius={borderRadius.lg}
+                  contentFit="contain"
+                />
+              </View>
               <View style={styles.caption}>
-                <Text style={[styles.kicker, { color: colors.textMuted }]}>Рекомендуем</Text>
-                <Text numberOfLines={2} style={[styles.name, { color: colors.text }]}>
+                <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.name, { color: colors.text }]}>
                   {item.title}
                 </Text>
                 <Text style={[styles.price, { color: isDarkMode ? colors.primary : colors.primaryDark }]}>
@@ -158,28 +172,35 @@ const styles = StyleSheet.create({
   cardShell: {
     overflow: 'hidden',
   },
-  img: {
+  cardInner: {
+    flex: 1,
+  },
+  imageWrap: {
+    flex: 1,
+    minHeight: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xs,
+  },
+  imgFill: {
     width: '100%',
-    height: 132,
+    height: '100%',
   },
   caption: {
-    padding: spacing.md,
-    gap: 4,
-  },
-  kicker: {
-    ...typography.kicker,
-    letterSpacing: 1,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
+    paddingTop: spacing.xs,
+    gap: 2,
   },
   name: {
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 17,
     fontFamily: fontFamily.sansSemibold,
-    letterSpacing: -0.15,
+    letterSpacing: -0.1,
   },
   price: {
     ...typography.numeric,
-    fontSize: 17,
-    marginTop: 2,
+    fontSize: 15,
   },
   dots: {
     flexDirection: 'row',

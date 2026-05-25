@@ -46,7 +46,11 @@ export default function BookingFormSection({
         <Text style={[styles.fieldLabel, { color: colors.textLight }]}>Дата</Text>
         <View style={styles.dateRow}>
           <TextInput
-            style={[styles.input, styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
+            style={[
+              styles.input,
+              styles.dateInput,
+              { backgroundColor: colors.card, borderColor: colors.border, color: colors.text, minWidth: 0 },
+            ]}
             value={date}
             onChangeText={(value) => setDate(applyDateMask(value))}
             placeholder="ДД.ММ.ГГГГ"
@@ -58,7 +62,9 @@ export default function BookingFormSection({
             style={[styles.calendarButton, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => setShowCalendar((prev) => !prev)}
           >
-            <Text style={{ color: colors.text, fontWeight: '700' }}>Календарь</Text>
+            <Text style={[styles.calendarButtonText, { color: colors.text }]} numberOfLines={1}>
+              Календарь
+            </Text>
           </TouchableOpacity>
         </View>
         {showCalendar && (

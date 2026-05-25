@@ -2,6 +2,8 @@ import { useCallback, useRef } from 'react';
 import * as clientApi from '../services/api/clientApi';
 import { mapSyncflowReservationToBooking } from '../utils/bookingMap';
 import { normalizeTablesClientPayload } from '../utils/resolveMediaUrl';
+import { patchHallTableCatalog } from '../utils/tableCatalog';
+import { sanitizeCartItems } from '../utils/cart';
 import {
   buildCartItemId,
   mergeUniqueById,
@@ -52,7 +54,7 @@ export function useClientDataActions({
             String(item.cartItemId || item.id) === cartItemId ? { ...item, quantity: item.quantity + quantity } : item
           )
         : [...cartItems, { id: dishId, cartItemId, quantity, modifiers, dishInCategoryId }];
-      await persistCart(next);
+      await persistCart(sanitizeCartItems(next, menu.dishes));
     },
     [cartItems, menu.dishes, persistCart]
   );
@@ -60,16 +62,19 @@ export function useClientDataActions({
   const changeCartQty = useCallback(
     async (dishIdOrCartItemId, delta) => {
       const target = String(dishIdOrCartItemId);
-      const next = cartItems
-        .map((item) => {
-          const byComposite = String(item.cartItemId || '') === target;
-          const byDishId = String(item.id) === target;
-          return byComposite || byDishId ? { ...item, quantity: item.quantity + delta } : item;
-        })
-        .filter((item) => item.quantity > 0);
+      const next = sanitizeCartItems(
+        cartItems
+          .map((item) => {
+            const byComposite = String(item.cartItemId || '') === target;
+            const byDishId = String(item.id) === target;
+            return byComposite || byDishId ? { ...item, quantity: item.quantity + delta } : item;
+          })
+          .filter((item) => item.quantity > 0),
+        menu.dishes
+      );
       await persistCart(next);
     },
-    [cartItems, persistCart]
+    [cartItems, menu.dishes, persistCart]
   );
 
   const clearCart = useCallback(async () => {
@@ -184,12 +189,27 @@ export function useClientDataActions({
   }, [userId, setOrders, setProfile, setNotifications, setNotificationsUnreadCount, persistUserScope]);
 
   const payOrder = useCallback(async (orderId) => {
+    const paidKey = String(orderId ?? '').trim();
     const updated = await clientApi.payOrder(orderId, userId);
-    setOrders((prev) =>
-      prev.map((order) =>
-        order.id === orderId ? { ...order, paymentStatus: updated?.paymentStatus || 'paid', status: updated?.status || 'confirmed' } : order
-      )
-    );
+    const paidSnapshot = {
+      ...updated,
+      id: String(updated?.id ?? paidKey),
+      paymentStatus: 'paid',
+      status: 'paid',
+    };
+
+    const mergePaid = (list) =>
+      (Array.isArray(list) ? list : []).map((order) =>
+        String(order.id) === paidKey ? { ...order, ...paidSnapshot } : order
+      );
+
+    let nextOrders = [];
+    setOrders((prev) => {
+      nextOrders = mergePaid(prev);
+      return nextOrders;
+    });
+    await persistUserScope({ orders: nextOrders });
+
     try {
       const updatedNotifications = await clientApi.fetchNotifications(userId, { limit: NOTIFICATIONS_PAGE_LIMIT, offset: 0 });
       setNotifications(updatedNotifications);
@@ -200,33 +220,39 @@ export function useClientDataActions({
         setNotificationsUnreadCount(updatedNotifications.filter((n) => n.read !== true).length);
       }
     } catch {}
+
     try {
-      const [latestOrders, latestProfile] = await Promise.all([
-        clientApi.fetchOrders(userId, { limit: ORDERS_PAGE_LIMIT, offset: 0 }),
-        clientApi.fetchUserProfile(userId),
-      ]);
-      setOrders(latestOrders);
+      const latestProfile = await clientApi.fetchUserProfile(userId);
       setProfile(latestProfile);
     } catch {}
-    return updated;
-  }, [userId, setOrders, setNotifications, setProfile, setNotificationsUnreadCount]);
+
+    try {
+      const latestOrders = await clientApi.fetchOrders(userId, { limit: ORDERS_PAGE_LIMIT, offset: 0 });
+      const merged = mergePaid(latestOrders);
+      setOrders(merged);
+      await persistUserScope({ orders: merged });
+    } catch {
+      // локальный кэш оплаты + mergePaid(prev) уже показывают «Оплачен»
+    }
+
+    return paidSnapshot;
+  }, [userId, setOrders, setNotifications, setProfile, setNotificationsUnreadCount, persistUserScope]);
 
   const submitOrderReview = useCallback(async (orderId, payload) => {
     await clientApi.submitOrderReview(orderId, payload, userId);
+    const reviewMeta = {
+      rating: Number(payload?.rating || 5),
+      comment: String(payload?.comment || ''),
+      createdAt: new Date().toISOString(),
+    };
     setOrders((prev) =>
-      prev.map((order) =>
-        order.id === orderId
-          ? {
-              ...order,
-              reviewed: true,
-              review: {
-                rating: Number(payload?.rating || 5),
-                comment: String(payload?.comment || ''),
-                createdAt: new Date().toISOString(),
-              },
-            }
-          : order
-      )
+      prev.map((order) => {
+        const same =
+          String(order.id) === String(orderId) ||
+          String(order.id).replace(/^order-/i, '') === String(orderId).replace(/^order-/i, '');
+        if (!same) return order;
+        return { ...order, reviewed: true, review: reviewMeta };
+      })
     );
     try {
       const updatedNotifications = await clientApi.fetchNotifications(userId, { limit: NOTIFICATIONS_PAGE_LIMIT, offset: 0 });
@@ -252,6 +278,7 @@ export function useClientDataActions({
     const tablesRaw = await clientApi.fetchTables(options);
     const tablesData = normalizeTablesClientPayload(tablesRaw);
     setTables(tablesData);
+    if (tablesData.length) await patchHallTableCatalog(tablesData);
     await writeJson(tablesCacheKey, { updatedAt: Date.now(), data: tablesData });
     return tablesData;
   }, [isAuthenticated, setTables]);

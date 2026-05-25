@@ -19,6 +19,10 @@ export function fetchTables() {
   return request(`${BASE}/tables`);
 }
 
+export function fetchAllTables() {
+  return fetchTables();
+}
+
 export function createBooking(payload, userId) {
   return request(`${BASE}/bookings`, {
     method: 'POST',

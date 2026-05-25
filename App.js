@@ -3,6 +3,7 @@ import { ActivityIndicator, StatusBar as RNStatusBar, StyleSheet, View } from 'r
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ProductionConfigGate from './src/components/ProductionConfigGate';
@@ -47,13 +48,15 @@ function AppBootstrapped() {
       <ProductionConfigGate>
         <ThemeProvider>
           <SafeAreaProvider>
-            <NetworkProvider>
-              <AuthProvider>
-                <ClientDataProvider>
-                  <ThemedRoot />
-                </ClientDataProvider>
-              </AuthProvider>
-            </NetworkProvider>
+            <GestureHandlerRootView style={styles.container}>
+              <NetworkProvider>
+                <AuthProvider>
+                  <ClientDataProvider>
+                    <ThemedRoot />
+                  </ClientDataProvider>
+                </AuthProvider>
+              </NetworkProvider>
+            </GestureHandlerRootView>
           </SafeAreaProvider>
         </ThemeProvider>
       </ProductionConfigGate>

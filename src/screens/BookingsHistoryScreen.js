@@ -1,22 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { borderRadius, getColors, spacing, typography } from '../constants/theme';
+import { borderRadius, getColors, layout, spacing, typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
+import { sortBookingsByDate } from '../utils/bookingSort';
 
 export default function BookingsHistoryScreen({ bookings = [], onBack, onOpenBooking }) {
   const { isDarkMode } = useTheme();
   const colors = getColors(isDarkMode);
   const [sortMode, setSortMode] = useState('desc');
 
-  const preparedBookings = useMemo(() => {
-    const sorted = [...bookings].sort((a, b) => {
-      const at = new Date(`${a.date || ''} ${a.time || '00:00'}`).getTime() || 0;
-      const bt = new Date(`${b.date || ''} ${b.time || '00:00'}`).getTime() || 0;
-      return sortMode === 'desc' ? bt - at : at - bt;
-    });
-    return sorted;
-  }, [bookings, sortMode]);
+  const preparedBookings = useMemo(() => sortBookingsByDate(bookings, sortMode), [bookings, sortMode]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -49,8 +43,10 @@ export default function BookingsHistoryScreen({ bookings = [], onBack, onOpenBoo
         </View>
       </View>
       <FlatList
+        key={sortMode}
         data={preparedBookings}
-        keyExtractor={(item) => item.id}
+        extraData={sortMode}
+        keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -98,11 +94,22 @@ export default function BookingsHistoryScreen({ bookings = [], onBack, onOpenBoo
   );
 }
 
+/** Одинаковый зазор: заголовок → фильтры → карточки */
+const SECTION_GAP = spacing.lg;
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm },
-  controls: { paddingHorizontal: spacing.lg, gap: spacing.xs },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  header: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.sm,
+    gap: spacing.sm,
+    marginBottom: SECTION_GAP,
+  },
+  controls: {
+    paddingHorizontal: layout.screenPaddingX,
+    marginBottom: SECTION_GAP,
+  },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     borderWidth: 1,
     borderRadius: borderRadius.round,
@@ -113,7 +120,12 @@ const styles = StyleSheet.create({
   back: { alignSelf: 'flex-start' },
   backText: { ...typography.body, fontWeight: '600' },
   title: { ...typography.h2 },
-  list: { padding: spacing.lg, gap: spacing.sm },
+  list: {
+    paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.lg,
+    gap: spacing.md,
+  },
   card: { borderWidth: 1, borderRadius: borderRadius.lg, padding: spacing.md, marginBottom: spacing.sm },
   cardTitle: { ...typography.body, fontWeight: '700', marginBottom: spacing.xs },
   cardText: { ...typography.caption },

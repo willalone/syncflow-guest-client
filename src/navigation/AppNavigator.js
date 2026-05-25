@@ -42,7 +42,6 @@ export default function AppNavigator() {
   const { isAuthenticated, isLoadingSession, user } = useAuth();
   const {
     menu,
-    recommendedDishes,
     tables,
     bookings,
     cartItems,
@@ -241,12 +240,13 @@ export default function AppNavigator() {
         return (
           <MenuScreen
             onOpenDish={setSelectedDish}
+            onAddToCart={addCartItem}
             dishes={menu.dishes}
             categories={menu.categories}
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
+            canUseFavorites={isAuthenticated}
             preorderContext={preorderContext}
-            recommendedDishes={recommendedDishes}
           />
         );
       case 'Cart':
@@ -254,6 +254,7 @@ export default function AppNavigator() {
           <CartScreen
             cartItems={cartItems}
             dishes={menu.dishes}
+            onOpenDish={setSelectedDish}
             onChangeQty={changeQty}
             onProceedToCheckout={() => {
               if (cartItems.length > 0 && !isOffline) {
@@ -343,6 +344,9 @@ export default function AppNavigator() {
           onBack={() => setSelectedDish(null)}
           onAddToCart={addToCart}
           canOrder={isAuthenticated}
+          favorites={favorites}
+          onToggleFavorite={toggleFavorite}
+          canUseFavorites={isAuthenticated}
           onOpenAuth={() => {
             setSelectedDish(null);
             setGuestAuthOpen(true);
@@ -392,6 +396,7 @@ export default function AppNavigator() {
           onBack={() => navigateToScreen('Profile')}
           onPayOrder={payOrder}
           onSubmitReview={submitOrderReview}
+          onReviewSuccess={() => showToast('success', 'Спасибо за ваш отзыв!')}
           onActionError={(message) => showToast('error', message)}
           hasMore={ordersHasMore}
           isLoadingMore={isLoadingMoreOrders}
@@ -416,6 +421,7 @@ export default function AppNavigator() {
     return null;
   }, [
     selectedBooking, fetchBookingDetail, selectedDish, menu.dishes, addToCart, isAuthenticated,
+    favorites, toggleFavorite,
     currentScreen, cartItems, onCheckout, addCartItem, profile?.loyaltyPoints, profile?.discountPercentage,
     appliedPromo, applyPromo, clearPromo, isOffline,
     notifications, openNotificationTarget, markAllNotificationsRead, notificationsHasMore,
@@ -439,7 +445,6 @@ export default function AppNavigator() {
             categories={menu.categories}
             favorites={[]}
             onToggleFavorite={() => {}}
-            recommendedDishes={recommendedDishes}
             canUseFavorites={false}
           />
         )}
@@ -506,6 +511,7 @@ export default function AppNavigator() {
           currentScreen={currentScreen}
           onNavigate={(screen) => navigateToScreen(screen)}
           cartItems={cartItems}
+          menuDishes={menu.dishes}
         />
       ) : null}
       {!isAuthenticated && !isLoadingSession && !guestAuthOpen ? (

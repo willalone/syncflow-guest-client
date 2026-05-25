@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { borderRadius, fontFamily, getColors, getGlassTokens, getShadows, layout, spacing, typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
-import FeaturedDishesCarousel from '../components/FeaturedDishesCarousel';
+import { useClientData } from '../contexts/ClientDataContext';
 import MenuDishCard from '../components/MenuDishCard';
 import GlassCard from '../components/ui/GlassCard';
+import RubberFlatList from '../components/ui/RubberFlatList';
 import SectionHeader from '../components/ui/SectionHeader';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import StaggeredEnter from '../components/StaggeredEnter';
@@ -16,15 +17,16 @@ import { isDishAvailableForVisit } from '../utils/menuAvailability';
 
 export default function MenuScreen({
   onOpenDish,
+  onAddToCart,
   dishes = [],
   categories = ['Все'],
   favorites = [],
   onToggleFavorite,
   preorderContext = null,
-  recommendedDishes = [],
   canUseFavorites = true,
 }) {
   const { isDarkMode } = useTheme();
+  const { refreshClientData, isRefreshing } = useClientData();
   const { width } = useWindowDimensions();
   const colors = getColors(isDarkMode);
   const glass = useMemo(() => getGlassTokens(isDarkMode), [isDarkMode]);
@@ -85,14 +87,6 @@ export default function MenuScreen({
     });
   }, [dishes, activeCategory, debouncedQuery, favorites, availabilityContext]);
 
-  const dishesForFeatured = useMemo(() => {
-    const base =
-      Array.isArray(recommendedDishes) && recommendedDishes.length
-        ? recommendedDishes
-        : filteredDishes;
-    return base.filter((dish) => isDishAvailableForVisit(dish, availabilityContext));
-  }, [recommendedDishes, filteredDishes, availabilityContext]);
-
   useEffect(() => {
     dishes.slice(0, 8).forEach((dish) => {
       if (dish.imageUrl && !String(dish.imageUrl).startsWith('data:')) {
@@ -103,7 +97,7 @@ export default function MenuScreen({
 
   const renderDish = useCallback(
     ({ item }) => (
-      <StaggeredEnter>
+      <StaggeredEnter style={styles.listItem}>
         <MenuDishCard
           dish={item}
           colors={colors}
@@ -111,32 +105,19 @@ export default function MenuScreen({
           isCompact={isCompact}
           isTablet={isTablet}
           onPress={onOpenDish}
+          onAddToCart={onAddToCart}
           favorites={favorites}
           onToggleFavorite={onToggleFavorite}
           showFavorite={canUseFavorites}
         />
       </StaggeredEnter>
     ),
-    [onOpenDish, isTablet, isCompact, colors, shadowsThemed, onToggleFavorite, favorites, canUseFavorites]
+    [onOpenDish, onAddToCart, isTablet, isCompact, colors, shadowsThemed, onToggleFavorite, favorites, canUseFavorites]
   );
 
-  const renderMenuListHeader = useCallback(() => {
-    if (activeCategory !== 'Все') {
-      return null;
-    }
-    return (
-      <FeaturedDishesCarousel
-        dishes={dishesForFeatured}
-        colors={colors}
-        shadows={shadowsThemed}
-        onOpenDish={onOpenDish}
-      />
-    );
-  }, [activeCategory, dishesForFeatured, colors, shadowsThemed, onOpenDish]);
-
-  return (
-    <ScreenBackdrop isDarkMode={isDarkMode}>
-      <SafeAreaView style={styles.container}>
+  const listHeader = useMemo(
+    () => (
+      <View style={styles.listHeader}>
         <View style={styles.header}>
           <Text style={[styles.greeting, { color: colors.textMuted }]}>Добро пожаловать</Text>
           <Text style={[styles.title, { color: colors.text }]}>Меню</Text>
@@ -166,10 +147,7 @@ export default function MenuScreen({
           ) : null}
         </View>
 
-        <SectionHeader
-          title="Категории"
-          colors={colors}
-        />
+        <SectionHeader title="Категории" colors={colors} style={styles.sectionHeaderFlush} />
 
         <View style={styles.categoriesRail}>
           <FlatList
@@ -200,7 +178,10 @@ export default function MenuScreen({
                       numberOfLines={1}
                       style={[
                         styles.categoryText,
-                        { color: active ? colors.black : colors.text, fontFamily: active ? fontFamily.sansBold : fontFamily.sansMedium },
+                        {
+                          color: active ? colors.black : colors.text,
+                          fontFamily: active ? fontFamily.sansBold : fontFamily.sansMedium,
+                        },
                       ]}
                     >
                       {item}
@@ -212,29 +193,42 @@ export default function MenuScreen({
           />
         </View>
 
-        <SectionHeader
-          title={activeCategory === 'Все' ? 'Популярное' : activeCategory}
-          hint={`${filteredDishes.length} поз.`}
-          colors={colors}
-        />
+        <SectionHeader title={activeCategory} colors={colors} style={styles.sectionHeaderFlush} />
+      </View>
+    ),
+    [
+      activeCategory,
+      colors,
+      displayedCategories,
+      glass.border,
+      glass.fill,
+      preorderContext,
+      query,
+      shadowsThemed,
+    ]
+  );
 
-        <FlatList
+  return (
+    <ScreenBackdrop isDarkMode={isDarkMode}>
+      <SafeAreaView style={styles.container}>
+        <RubberFlatList
           style={styles.menuScroll}
           data={filteredDishes}
           key={numColumns}
           numColumns={numColumns}
           keyExtractor={(item) => item.id}
-          ListHeaderComponent={renderMenuListHeader}
-          contentContainerStyle={[styles.list, { paddingBottom: spacing['2xl'] }]}
+          ListHeaderComponent={listHeader}
+          contentContainerStyle={[styles.listContent, { paddingBottom: spacing['2xl'] }]}
           columnWrapperStyle={numColumns > 1 ? styles.columnWrap : undefined}
           initialNumToRender={8}
           windowSize={7}
           maxToRenderPerBatch={8}
           removeClippedSubviews={false}
-          keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           nestedScrollEnabled
           renderItem={renderDish}
+          onRefresh={refreshClientData}
+          refreshing={isRefreshing}
         />
       </SafeAreaView>
     </ScreenBackdrop>
@@ -244,11 +238,20 @@ export default function MenuScreen({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'transparent' },
   menuScroll: { flex: 1 },
-  header: {
+  listContent: {
     paddingHorizontal: layout.screenPaddingX,
+    paddingTop: spacing.xs,
+    alignItems: 'stretch',
+  },
+  listHeader: {
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  header: {
     paddingTop: spacing.sm,
     gap: spacing.sm,
     paddingBottom: spacing.xs,
+    alignSelf: 'stretch',
   },
   greeting: {
     ...typography.caption,
@@ -262,7 +265,12 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
   },
   searchGlass: {
+    width: '100%',
+    alignSelf: 'stretch',
     minHeight: layout.searchHeight,
+  },
+  sectionHeaderFlush: {
+    paddingHorizontal: 0,
   },
   searchInner: {
     flexDirection: 'row',
@@ -290,11 +298,12 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   categories: {
-    paddingHorizontal: layout.screenPaddingX,
     gap: spacing.sm,
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
-  categoryHit: { alignSelf: 'center' },
+  categoryHit: {
+    alignSelf: 'flex-start',
+  },
   categoryChip: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: borderRadius.pill,
@@ -306,10 +315,8 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontSize: 14,
   },
-  list: {
-    paddingHorizontal: layout.screenPaddingX,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
+  listItem: {
+    width: '100%',
   },
   columnWrap: {
     gap: spacing.sm,

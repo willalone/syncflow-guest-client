@@ -3,7 +3,12 @@ import { readAuthSession } from '../../authSessionStorage';
 import { mapSyncflowReservationToBooking, preorderFromSyncflowApi } from '../../../utils/bookingMap';
 import { DEFAULT_VENUE_LABEL } from '../../../constants/venue';
 import { normalizeSyncflowListResponse } from '../syncflowMappers';
+import { getConfiguredHallTables, mergeTableCatalog } from '../../../utils/tableCatalog';
 import { addTwoHoursHms, dateDdMmYyyyToIso, padTimeToHms } from './shared';
+import {
+  filterReservationsForGuest,
+  readCurrentGuestIdentity,
+} from './guestScope';
 
 function syncflowTimeToHm(value) {
   if (value == null) return null;
@@ -54,9 +59,59 @@ export async function fetchTables(options = {}) {
   const to = padTimeToHms(options?.to || '23:00');
   const seats = Math.max(1, Number(options?.seats || 1));
   const query = `?date=${encodeURIComponent(date)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&seats=${encodeURIComponent(seats)}`;
-  const rows = await syncflowGuestRequest(`/tables/available${query}`);
-  if (!Array.isArray(rows)) return [];
-  return rows.map(mapTable);
+  const raw = await syncflowGuestRequest(`/tables/available${query}`);
+  return normalizeSyncflowListResponse(raw).map(mapTable);
+}
+
+/** Двухчасовые окна за день — union id столов, доступных хотя бы в одном слоте (гостевой API). */
+const HALL_DAY_SCAN_SLOTS = [
+  { from: '10:00', to: '12:00' },
+  { from: '12:00', to: '14:00' },
+  { from: '14:00', to: '16:00' },
+  { from: '16:00', to: '18:00' },
+  { from: '18:00', to: '20:00' },
+  { from: '20:00', to: '22:00' },
+  { from: '22:00', to: '23:59' },
+];
+
+async function fetchAvailableSlice(dateIso, fromHm, toHm, seats = 1) {
+  const from = padTimeToHms(fromHm);
+  const to = toHm === '23:59' ? '23:59:59' : padTimeToHms(toHm);
+  const query = `?date=${encodeURIComponent(dateIso)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&seats=${encodeURIComponent(seats)}`;
+  const raw = await syncflowGuestRequest(`/tables/available${query}`);
+  return normalizeSyncflowListResponse(raw).map(mapTable);
+}
+
+async function fetchCatalogViaDaySlots(dateIso) {
+  const batches = await Promise.all(
+    HALL_DAY_SCAN_SLOTS.map(async ({ from, to }) => {
+      try {
+        return await fetchAvailableSlice(dateIso, from, to);
+      } catch {
+        return [];
+      }
+    })
+  );
+  return mergeTableCatalog(...batches);
+}
+
+async function fetchAllTablesWideDay(dateIso) {
+  try {
+    return await fetchAvailableSlice(dateIso, '00:00', '23:59');
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Каталог столов для схемы зала (роль CLIENT не имеет GET /api/tables — только /tables/available).
+ */
+export async function fetchAllTables(options = {}) {
+  const dateIso = String(options?.date || new Date().toISOString().slice(0, 10));
+  const configured = getConfiguredHallTables();
+  const scanned = await fetchCatalogViaDaySlots(dateIso);
+  const wide = await fetchAllTablesWideDay(dateIso);
+  return mergeTableCatalog(configured, scanned, wide);
 }
 
 export async function createBooking(payload, _userId) {
@@ -109,9 +164,11 @@ export async function createBooking(payload, _userId) {
 }
 
 export async function fetchBookings(_userId) {
+  const identity = await readCurrentGuestIdentity();
   const rows = await syncflowGuestRequest('/reservations');
   if (!Array.isArray(rows)) return [];
-  const bookings = rows.map((r) => mapSyncflowReservationToBooking(r)).filter(Boolean);
+  const scoped = filterReservationsForGuest(rows, identity);
+  const bookings = scoped.map((r) => mapSyncflowReservationToBooking(r)).filter(Boolean);
   await Promise.all(
     bookings.map(async (b) => {
       try {

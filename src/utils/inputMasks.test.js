@@ -21,9 +21,10 @@ describe('inputMasks', () => {
     expect(applyTimeMask('1830')).toBe('18:30');
   });
 
-  test('applyPhoneMask normalizes Russian numbers', () => {
-    expect(applyPhoneMask('9991234567')).toMatch(/^\+7 999/);
-    expect(applyPhoneMask('79991234567')).toBe('+7 999 123-45-67');
+  test('applyPhoneMask formats +7(___)___-__-__', () => {
+    expect(applyPhoneMask('')).toBe('+7(');
+    expect(applyPhoneMask('9991234567')).toBe('+7(999)123-45-67');
+    expect(applyPhoneMask('79991234567')).toBe('+7(999)123-45-67');
   });
 
   test('isValidDateMask and isValidTimeMask', () => {

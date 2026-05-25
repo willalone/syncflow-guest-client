@@ -1,4 +1,4 @@
-import { buildCartPayableBreakdown, calculateCartTotal, getCartCount } from './cart';
+import { buildCartPayableBreakdown, calculateCartTotal, getCartCount, getValidCartItems } from './cart';
 
 const dishes = [
   { id: 'a', price: 100 },
@@ -18,13 +18,33 @@ describe('cart utils', () => {
     expect(total).toBe(450);
   });
 
-  test('returns cart items count', () => {
-    const count = getCartCount([
-      { id: 'a', quantity: 2 },
-      { id: 'b', quantity: 3 },
-    ]);
+  test('sums quantities as position count', () => {
+    expect(
+      getCartCount(
+        [
+          { id: 'a', quantity: 4 },
+          { id: 'b', quantity: 1 },
+          { id: 'ghost', quantity: 99 },
+        ],
+        dishes
+      )
+    ).toBe(5);
 
-    expect(count).toBe(5);
+    expect(
+      getCartCount(
+        [
+          { id: 'a', quantity: 4 },
+          { id: 'b', quantity: 2 },
+        ],
+        dishes
+      )
+    ).toBe(6);
+  });
+
+  test('empty cart and orphan lines yield zero count', () => {
+    expect(getCartCount([], dishes)).toBe(0);
+    expect(getCartCount([{ id: 'missing', quantity: 2 }], dishes)).toBe(0);
+    expect(getValidCartItems([{ id: 'a', quantity: 0 }], dishes)).toEqual([]);
   });
 
   test('buildCartPayableBreakdown applies promo, guest % and points cap', () => {

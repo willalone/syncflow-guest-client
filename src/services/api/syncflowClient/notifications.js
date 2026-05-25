@@ -1,6 +1,7 @@
 import { syncflowGuestRequest } from '../../syncflowHttp';
 import { readAuthSession, writeAuthSession } from '../../authSessionStorage';
 import { mapSyncflowNotificationToClient } from '../syncflowMappers';
+import { filterNotificationsForGuest, readCurrentGuestIdentity } from './guestScope';
 
 function parseUnreadCountPayload(raw) {
   if (typeof raw === 'number' && Number.isFinite(raw)) return Math.max(0, Math.floor(raw));
@@ -13,20 +14,20 @@ function parseUnreadCountPayload(raw) {
 }
 
 export async function fetchNotifications(_userId, options = {}) {
+  const identity = await readCurrentGuestIdentity();
   const rows = await syncflowGuestRequest('/notifications/my');
-  const list = Array.isArray(rows)
-    ? rows
-        .map(mapSyncflowNotificationToClient)
-        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-    : [];
+  const scoped = filterNotificationsForGuest(Array.isArray(rows) ? rows : [], identity);
+  const list = scoped
+    .map(mapSyncflowNotificationToClient)
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   const offset = Number(options?.offset || 0);
   const limit = Number(options?.limit || 50);
   return list.slice(offset, offset + limit);
 }
 
-export async function fetchNotificationsUnreadCount(_userId) {
-  const raw = await syncflowGuestRequest('/notifications/my/unread-count');
-  return parseUnreadCountPayload(raw);
+export async function fetchNotificationsUnreadCount(userId) {
+  const list = await fetchNotifications(userId, { limit: 50, offset: 0 });
+  return list.filter((n) => n.read !== true).length;
 }
 
 export function markNotificationRead(_userId, notificationId) {

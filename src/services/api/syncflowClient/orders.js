@@ -1,9 +1,12 @@
 import { syncflowGuestRequest } from '../../syncflowHttp';
+import { applyLocalPaidOrders, markOrderPaidLocally, readPaidOrderIds } from '../../../utils/localPaidOrders';
 import {
   mapOrderSummaryToClient,
   mapSyncflowOrderDishesToClientItems,
   mapSyncflowOrderToClient,
+  normalizeSyncflowListResponse,
 } from '../syncflowMappers';
+import { filterOrdersForGuest, readCurrentGuestIdentity } from './guestScope';
 
 async function enrichOrdersMissingLineItems(orders) {
   const targets = orders.filter((o) => (!o.items || !o.items.length) && o.id);
@@ -23,6 +26,28 @@ async function enrichOrdersMissingLineItems(orders) {
   }
 }
 
+async function enrichOrdersMissingTotals(orders) {
+  const targets = orders.filter((o) => o.id && !(Number(o.total) > 0));
+  const concurrency = 4;
+  for (let i = 0; i < targets.length; i += concurrency) {
+    const batch = targets.slice(i, i + concurrency);
+    await Promise.all(
+      batch.map(async (o) => {
+        try {
+          const raw = await syncflowGuestRequest(`/orders/${encodeURIComponent(o.id)}/summary`);
+          const summary = mapOrderSummaryToClient(raw);
+          if (summary?.finalTotal > 0) {
+            o.total = summary.finalTotal;
+            if (summary.subtotal > 0) o.subtotal = summary.subtotal;
+          }
+        } catch {
+          // остаётся сумма из списка или 0
+        }
+      })
+    );
+  }
+}
+
 export async function fetchOrderDishes(orderId) {
   const id = Number(orderId);
   if (!Number.isFinite(id) || id <= 0) return [];
@@ -33,13 +58,20 @@ export async function fetchOrderDishes(orderId) {
 export function fetchOrders(_userId, options = {}) {
   const limit = Number(options?.limit || 30);
   const offset = Number(options?.offset || 0);
-  return syncflowGuestRequest('/orders/my').then(async (rows) => {
-    if (!Array.isArray(rows)) return [];
-    const mapped = rows
-      .map((row) => mapSyncflowOrderToClient(row))
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  return readCurrentGuestIdentity().then(async (identity) => {
+    const [rawOrders, paidIds] = await Promise.all([
+      syncflowGuestRequest('/orders/my').catch(() => null),
+      readPaidOrderIds(),
+    ]);
+    const orderRows = normalizeSyncflowListResponse(rawOrders);
+    const scoped = filterOrdersForGuest(orderRows, identity);
+    const mapped = applyLocalPaidOrders(
+      scoped.map((row) => mapSyncflowOrderToClient(row)),
+      paidIds
+    );
     const slice = mapped.slice(offset, offset + limit);
     await enrichOrdersMissingLineItems(slice);
+    await enrichOrdersMissingTotals(slice);
     return slice;
   });
 }
@@ -79,18 +111,28 @@ export async function createOrder(payload = {}) {
     status: 'created',
     paymentStatus: 'pending',
   });
-  if (payload?.bookingId != null) {
+  if (payload?.bookingId != null || payload?.reservationId != null) {
     mapped.orderType = 'booking';
+    mapped.bookingId = String(payload.bookingId ?? payload.reservationId ?? '');
+    mapped.reservationId = String(payload.reservationId ?? payload.bookingId ?? '');
   }
   return mapped;
 }
 
 export async function payOrder(orderId) {
-  const updated = await syncflowGuestRequest(`/orders/my/${encodeURIComponent(orderId)}/pay`, {
+  const paidKey = String(orderId ?? '').trim();
+  const updated = await syncflowGuestRequest(`/orders/my/${encodeURIComponent(paidKey)}/pay`, {
     method: 'PATCH',
     body: JSON.stringify({}),
   });
-  return mapSyncflowOrderToClient(updated, { id: orderId, status: 'paid', paymentStatus: 'paid' });
+  await markOrderPaidLocally(paidKey);
+  const mapped = mapSyncflowOrderToClient(updated, { id: paidKey, status: 'paid', paymentStatus: 'paid' });
+  return {
+    ...mapped,
+    id: String(mapped.id || paidKey),
+    paymentStatus: 'paid',
+    status: 'paid',
+  };
 }
 
 export async function fetchOrderSummary(orderId) {
@@ -100,12 +142,18 @@ export async function fetchOrderSummary(orderId) {
   return mapOrderSummaryToClient(raw);
 }
 
-export async function submitOrderReview(_orderId, payload, _userId) {
+export async function submitOrderReview(orderId, payload, _userId) {
   const stars = Math.min(5, Math.max(1, Math.round(Number(payload?.rating ?? payload?.stars ?? 5))));
   const description = String(payload?.comment ?? payload?.description ?? '').trim() || '—';
+  const orderNumericId = Number(String(orderId ?? '').replace(/^order-/i, '').replace(/\D/g, ''));
+  const body = { stars, description };
+  if (Number.isFinite(orderNumericId) && orderNumericId > 0) {
+    body.order = { id: orderNumericId };
+    body.orderId = orderNumericId;
+  }
   return syncflowGuestRequest('/reviews', {
     method: 'POST',
-    body: JSON.stringify({ stars, description }),
+    body: JSON.stringify(body),
   });
 }
 

@@ -14,9 +14,9 @@ export function mapReservationStatus(s) {
 
 export function mapSyncflowReservationToBooking(r) {
   if (!r) return null;
-  const d = r.reservDate || '';
-  const [y, m, day] = d.split('-');
-  const dateRu = y && m && day ? `${day}.${m}.${y}` : d;
+  const iso = String(r.reservDate || '').trim().split('T')[0];
+  const [y, m, day] = iso.split('-');
+  const dateRu = y && m && day && y.length === 4 ? `${day}.${m}.${y}` : iso;
   const timeShort = (r.reservHourFrom || '00:00:00').slice(0, 5);
   return {
     id: String(r.id),
@@ -43,6 +43,7 @@ export function preorderFromSyncflowApi(raw, servingTimeLabel) {
       id: String(row?.id ?? ''),
       title: String(row?.dishName ?? row?.name ?? 'Позиция').trim(),
       quantity: Math.max(1, Number(row?.quantity || 1)),
+      unitPrice: Number(row?.price ?? row?.unitPrice ?? 0),
     })),
     servingTime: servingTimeLabel != null && String(servingTimeLabel).trim() ? String(servingTimeLabel).trim() : null,
   };

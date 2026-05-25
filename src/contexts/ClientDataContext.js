@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
 import {
   cartKey,
@@ -6,6 +6,7 @@ import {
 import { patchUserScopeCache, writeJson } from './clientDataStorage';
 import { useClientDataBootstrap } from './useClientDataBootstrap';
 import { useClientDataActions } from './useClientDataActions';
+import { runClientDataRefresh } from './clientDataRefresh';
 
 const ClientDataContext = createContext();
 
@@ -36,6 +37,8 @@ export function ClientDataProvider({ children }) {
   const [isLoadingMoreNotifications, setIsLoadingMoreNotifications] = useState(false);
   const [appliedPromo, setAppliedPromo] = useState(null);
   const [notificationsUnreadCount, setNotificationsUnreadCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const isRefreshingRef = useRef(false);
 
   useClientDataBootstrap({
     userId,
@@ -67,6 +70,46 @@ export function ClientDataProvider({ children }) {
     },
     [userId, isAuthenticated],
   );
+
+  const refreshClientData = useCallback(async () => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    setIsRefreshing(true);
+    try {
+      await runClientDataRefresh({
+        userId,
+        isAuthenticated,
+        setMenu,
+        setTables,
+        setRecommendedDishes,
+        setBookings,
+        setOrders,
+        setProfile,
+        setFavorites,
+        setNotifications,
+        setOrdersHasMore,
+        setNotificationsHasMore,
+        setNotificationsUnreadCount,
+      });
+    } finally {
+      isRefreshingRef.current = false;
+      setIsRefreshing(false);
+    }
+  }, [
+    userId,
+    isAuthenticated,
+    setMenu,
+    setTables,
+    setRecommendedDishes,
+    setBookings,
+    setOrders,
+    setProfile,
+    setFavorites,
+    setNotifications,
+    setOrdersHasMore,
+    setNotificationsHasMore,
+    setNotificationsUnreadCount,
+  ]);
 
   const {
     addToCart,
@@ -128,6 +171,8 @@ export function ClientDataProvider({ children }) {
       notifications,
       notificationsUnreadCount,
       isBootstrapping,
+      isRefreshing,
+      refreshClientData,
       ordersHasMore,
       notificationsHasMore,
       isLoadingMoreOrders,
@@ -154,7 +199,7 @@ export function ClientDataProvider({ children }) {
       markAllNotificationsRead,
     }),
     [
-      menu, recommendedDishes, tables, bookings, orders, cartItems, profile, favorites, notifications, notificationsUnreadCount, isBootstrapping,
+      menu, recommendedDishes, tables, bookings, orders, cartItems, profile, favorites, notifications, notificationsUnreadCount, isBootstrapping, isRefreshing, refreshClientData,
       ordersHasMore, notificationsHasMore, isLoadingMoreOrders, isLoadingMoreNotifications,
       appliedPromo, applyPromo, clearPromo, spendGuestBonus, fetchBookingDetail,
       addToCart, changeCartQty, clearCart, createBooking, createOrder, payOrder, submitOrderReview,

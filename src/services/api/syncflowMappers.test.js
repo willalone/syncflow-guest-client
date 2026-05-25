@@ -6,8 +6,10 @@ import {
   normalizeOrderStatus,
   normalizeOrderType,
   normalizeSyncflowListResponse,
+  resolveOrderPaymentStatus,
   mapSyncflowOrderToClient,
   mapSyncflowOrderDishesToClientItems,
+  resolveOrderPayableTotal,
 } from './syncflowMappers';
 
 describe('syncflowMappers', () => {
@@ -59,6 +61,28 @@ describe('syncflowMappers', () => {
     expect(mapped.id).toBe('5');
     expect(mapped.items[0].title).toBe('Суп');
     expect(mapped.items[0].quantity).toBe(2);
+  });
+
+  test('resolveOrderPaymentStatus uses payment.status when order.status is CREATED', () => {
+    expect(resolveOrderPaymentStatus({ status: 'CREATED', payment: { status: 'PAID' } }, 'created')).toBe(
+      'paid'
+    );
+    expect(
+      mapSyncflowOrderToClient({ id: 1, status: 'CREATED', payment: { status: 'PAID' } }).paymentStatus
+    ).toBe('paid');
+  });
+
+  test('resolveOrderPayableTotal uses totalPrice and finalTotal from API', () => {
+    expect(resolveOrderPayableTotal({ totalPrice: 1500 })).toBe(1500);
+    expect(resolveOrderPayableTotal({ finalTotal: 1673.1 })).toBe(1673.1);
+    expect(
+      mapSyncflowOrderToClient({
+        id: 3,
+        status: 'PAID',
+        totalPrice: 2640,
+        dishes: [{ dishName: 'Стейк', quantity: 1, totalPrice: 1200 }],
+      }).total
+    ).toBe(2640);
   });
 
   test('maps order with nested dishes array when items absent', () => {

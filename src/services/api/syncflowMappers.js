@@ -17,6 +17,21 @@ export function normalizeOrderStatus(statusRaw) {
   return 'created';
 }
 
+/** Статус оплаты: order.status, payment.status и явные флаги с бэкенда. */
+export function resolveOrderPaymentStatus(order, normalizedStatus) {
+  if (normalizedStatus === 'paid' || normalizedStatus === 'completed') return 'paid';
+
+  const paymentStatusRaw = String(order?.payment?.status ?? order?.paymentStatus ?? '').toUpperCase();
+  if (['PAID', 'COMPLETED', 'SUCCESS', 'SUCCEEDED'].includes(paymentStatusRaw)) {
+    return 'paid';
+  }
+  if (order?.payment?.paidAt || order?.paidAt || order?.isPaid === true || order?.paid === true) {
+    return 'paid';
+  }
+
+  return 'pending';
+}
+
 function toNumberSafe(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -38,10 +53,56 @@ function itemTitleFromOrderRow(row) {
   return 'Позиция заказа';
 }
 
+function sumOrderLinesTotal(order) {
+  const rows = Array.isArray(order?.dishes) ? order.dishes : [];
+  if (!rows.length) return 0;
+  return rows.reduce((sum, row) => {
+    const dishTotal = toNumberSafe(row?.totalPrice ?? row?.total ?? 0, 0);
+    const mods = Array.isArray(row?.modificators) ? row.modificators : [];
+    const modsTotal = mods.reduce(
+      (s, m) => s + toNumberSafe(m?.totalPrice ?? m?.basePrice ?? 0, 0),
+      0
+    );
+    const qty = Math.max(1, Number(row?.quantity || 1));
+    const line =
+      dishTotal > 0
+        ? dishTotal
+        : toNumberSafe(row?.priceWithCategory ?? row?.basePrice ?? row?.price ?? 0, 0) * qty;
+    return sum + line + modsTotal;
+  }, 0);
+}
+
+/** Итог к оплате из ответа API (SyncFlow: totalPrice, finalTotal, payment…). */
+export function resolveOrderPayableTotal(order, fallback = {}) {
+  const candidates = [
+    order?.finalTotal,
+    order?.totalPrice,
+    order?.payment?.totalPrice,
+    order?.payment?.finalTotal,
+    order?.total,
+    order?.totalAmount,
+    order?.total_amount,
+    fallback?.finalTotal,
+    fallback?.total,
+    fallback?.totalPrice,
+  ];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return Number(n.toFixed(2));
+  }
+  const fromLines = sumOrderLinesTotal(order);
+  if (fromLines > 0) return Number(fromLines.toFixed(2));
+  const subtotal = Number(order?.subtotal ?? fallback?.subtotal);
+  if (Number.isFinite(subtotal) && subtotal > 0) return Number(subtotal.toFixed(2));
+  return 0;
+}
+
 export function mapSyncflowOrderToClient(order, fallback = {}) {
   const id = order?.id != null ? String(order.id) : String(fallback.id || `order-${Date.now()}`);
-  const status = normalizeOrderStatus(order?.status);
-  const paymentStatus = status === 'paid' ? 'paid' : String(order?.paymentStatus || 'pending');
+  const status = normalizeOrderStatus(order?.status ?? fallback?.status);
+  const paymentStatus =
+    fallback?.paymentStatus === 'paid' ? 'paid' : resolveOrderPaymentStatus(order, status);
+  const resolvedStatus = paymentStatus === 'paid' ? 'paid' : status;
   const fromNestedDishes = Array.isArray(order?.dishes) ? order.dishes : [];
   const incomingItems = Array.isArray(order?.items) && order.items.length
     ? order.items
@@ -58,11 +119,14 @@ export function mapSyncflowOrderToClient(order, fallback = {}) {
   return {
     id,
     createdAt: order?.datetimeOrder || fallback?.createdAt || new Date().toISOString(),
-    status,
+    status: resolvedStatus,
     paymentStatus,
     orderType: normalizeOrderType(order?.orderType || fallback?.orderType),
-    total: toNumberSafe(order?.total ?? fallback?.total ?? 0),
-    subtotal: toNumberSafe(order?.subtotal ?? fallback?.total ?? 0),
+    total: resolveOrderPayableTotal(order, fallback),
+    subtotal: toNumberSafe(
+      order?.subtotal ?? order?.grossTotal ?? fallback?.subtotal ?? resolveOrderPayableTotal(order, fallback),
+      0
+    ),
     discount: toNumberSafe(order?.discount ?? fallback?.discount ?? 0),
     bonusSpent: pickFirstFinite(
       [order?.bonusSpent, order?.spentBonus, order?.bonusSpentAmount, fallback?.bonusSpent],

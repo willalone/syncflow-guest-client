@@ -5,6 +5,14 @@ import { borderRadius, getColors, getShadows, layout, spacing, typography } from
 import { useTheme } from '../contexts/ThemeContext';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import { Ionicons } from '@expo/vector-icons';
+import { formatRubles } from '../utils/money';
+
+function isOrderPaid(item) {
+  return (
+    item?.paymentStatus === 'paid' ||
+    ['paid', 'confirmed', 'completed', 'PAID', 'COMPLETED'].includes(String(item?.status || ''))
+  );
+}
 
 export default function OrdersHistoryScreen({
   orders = [],
@@ -12,6 +20,7 @@ export default function OrdersHistoryScreen({
   onPayOrder,
   onSubmitReview,
   onActionError,
+  onReviewSuccess,
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
@@ -20,6 +29,7 @@ export default function OrdersHistoryScreen({
   const colors = getColors(isDarkMode);
   const shadows = getShadows(isDarkMode);
   const [reviewState, setReviewState] = useState({});
+  const [submittingReviewId, setSubmittingReviewId] = useState('');
 
   const setReviewValue = (orderId, key, value) => {
     setReviewState((prev) => ({ ...prev, [orderId]: { ...(prev[orderId] || {}), [key]: value } }));
@@ -62,7 +72,9 @@ export default function OrdersHistoryScreen({
         renderItem={({ item }) => (
           <View style={[styles.card, shadows.float, { backgroundColor: colors.card, borderColor: colors.hairline }]}>
             <View style={styles.titleRow}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>Сумма: {item.total} руб.</Text>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                Сумма: {formatRubles(item.total)} ₽
+              </Text>
               <View
                 style={[
                   styles.statusBadge,
@@ -98,7 +110,12 @@ export default function OrdersHistoryScreen({
             <Text style={[styles.cardText, { color: colors.textLight }]}>
               {(item.items || []).map((row) => `${row.title} x${row.quantity}`).join(', ')}
             </Text>
-            {item.paymentStatus !== 'paid' ? (
+            {item.isReservationPreorder ? (
+              <Text style={[styles.cardText, { color: colors.textMuted }]}>
+                Предзаказ к брони — оплатите при визите или оформите новый заказ в приложении.
+              </Text>
+            ) : null}
+            {item.paymentStatus !== 'paid' && !item.isReservationPreorder ? (
               <TouchableOpacity
                 style={[styles.actionBtn, { backgroundColor: colors.primary }]}
                 onPress={async () => {
@@ -112,49 +129,84 @@ export default function OrdersHistoryScreen({
                 <Text style={[styles.actionText, { color: colors.black }]}>Оплатить заказ</Text>
               </TouchableOpacity>
             ) : null}
-            <View style={styles.reviewWrap}>
-              <TextInput
-                value={String(reviewState[item.id]?.rating || '')}
-                onChangeText={(value) => setReviewValue(item.id, 'rating', value.replace(/\D/g, '').slice(0, 1))}
-                keyboardType="numeric"
-                placeholder="Оценка 1-5"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              />
-              <TextInput
-                value={String(reviewState[item.id]?.comment || '')}
-                onChangeText={(value) => setReviewValue(item.id, 'comment', value)}
-                placeholder="Комментарий к заказу"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
-              />
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: item.reviewed ? colors.border : colors.primary }]}
-                disabled={Boolean(item.reviewed)}
-                onPress={async () => {
-                  const firstItemId = item?.items?.[0]?.id;
-                  const numericMenuItemId = Number(firstItemId);
-                  if (!Number.isFinite(numericMenuItemId)) {
-                    onActionError?.('Невозможно отправить отзыв: в заказе не найдена позиция меню');
-                    return;
-                  }
-                  const ratingRaw = Number(reviewState[item.id]?.rating || 5);
-                  try {
-                    await onSubmitReview?.(item.id, {
-                      rating: Math.max(1, Math.min(5, ratingRaw)),
-                      comment: String(reviewState[item.id]?.comment || ''),
-                      menuItemId: numericMenuItemId,
-                    });
-                  } catch (error) {
-                    onActionError?.(error?.message || 'Не удалось отправить отзыв. Попробуйте снова.');
-                  }
-                }}
-              >
-                <Text style={[styles.actionText, { color: item.reviewed ? colors.textMuted : colors.black }]}>
-                  {item.reviewed ? 'Отзыв отправлен' : 'Оставить отзыв'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {isOrderPaid(item) && !item.isReservationPreorder ? (
+              <View style={styles.reviewWrap}>
+                <TextInput
+                  value={String(reviewState[item.id]?.rating ?? (item.reviewed ? item.review?.rating : '') ?? '')}
+                  onChangeText={(value) => setReviewValue(item.id, 'rating', value.replace(/\D/g, '').slice(0, 1))}
+                  keyboardType="numeric"
+                  placeholder="Оценка 1-5"
+                  placeholderTextColor={colors.textMuted}
+                  editable={!item.reviewed}
+                  style={[
+                    styles.input,
+                    {
+                      borderColor: colors.border,
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      opacity: item.reviewed ? 0.65 : 1,
+                    },
+                  ]}
+                />
+                <TextInput
+                  value={String(reviewState[item.id]?.comment ?? (item.reviewed ? item.review?.comment : '') ?? '')}
+                  onChangeText={(value) => setReviewValue(item.id, 'comment', value)}
+                  placeholder="Комментарий к заказу"
+                  placeholderTextColor={colors.textMuted}
+                  editable={!item.reviewed}
+                  style={[
+                    styles.input,
+                    {
+                      borderColor: colors.border,
+                      color: colors.text,
+                      backgroundColor: colors.background,
+                      opacity: item.reviewed ? 0.65 : 1,
+                    },
+                  ]}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.actionBtn,
+                    {
+                      backgroundColor: item.reviewed ? colors.border : colors.primary,
+                      opacity: item.reviewed || submittingReviewId === item.id ? 0.7 : 1,
+                    },
+                  ]}
+                  disabled={Boolean(item.reviewed) || submittingReviewId === item.id}
+                  onPress={async () => {
+                    if (item.reviewed || submittingReviewId === item.id) return;
+                    const firstItemId = item?.items?.[0]?.id;
+                    const numericMenuItemId = Number(firstItemId);
+                    if (!Number.isFinite(numericMenuItemId)) {
+                      onActionError?.('Невозможно отправить отзыв: в заказе не найдена позиция меню');
+                      return;
+                    }
+                    const ratingRaw = Number(reviewState[item.id]?.rating || 5);
+                    setSubmittingReviewId(item.id);
+                    try {
+                      await onSubmitReview?.(item.id, {
+                        rating: Math.max(1, Math.min(5, ratingRaw || 5)),
+                        comment: String(reviewState[item.id]?.comment || ''),
+                        menuItemId: numericMenuItemId,
+                      });
+                      onReviewSuccess?.();
+                    } catch (error) {
+                      onActionError?.(error?.message || 'Не удалось отправить отзыв. Попробуйте снова.');
+                    } finally {
+                      setSubmittingReviewId('');
+                    }
+                  }}
+                >
+                  <Text style={[styles.actionText, { color: item.reviewed ? colors.textMuted : colors.black }]}>
+                    {item.reviewed
+                      ? 'Отзыв отправлен'
+                      : submittingReviewId === item.id
+                        ? 'Отправляем...'
+                        : 'Оставить отзыв'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         )}
       />

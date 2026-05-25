@@ -9,6 +9,7 @@ export {
 } from './syncflowClient/menu';
 export {
   fetchTables,
+  fetchAllTables,
   createBooking,
   fetchBookings,
   fetchReservationById,

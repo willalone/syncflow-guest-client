@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -17,31 +17,31 @@ const tabs = [
 const BAR_PADDING_TOP = 12;
 const ICON_SLOT_H = 44;
 
-export default function TabBar({ currentScreen, onNavigate, cartItems }) {
+export default function TabBar({ currentScreen, onNavigate, cartItems, menuDishes = [] }) {
   const { isDarkMode } = useTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const colors = getColors(isDarkMode);
   const glass = getGlassTokens(isDarkMode);
   const shadowsThemed = getShadows(isDarkMode);
-  const cartCount = getCartCount(cartItems);
+  const cartCount = getCartCount(cartItems, menuDishes);
   const isCompact = width < 380;
   const bottomPad = Math.max(insets.bottom, spacing.sm);
 
-  const [tabsWidth, setTabsWidth] = useState(0);
   const slideX = useRef(new Animated.Value(0)).current;
+  const tabLayouts = useRef(tabs.map(() => null));
   const iconScaleMap = useRef(
     Object.fromEntries(tabs.map((tab) => [tab.id, new Animated.Value(1)]))
   ).current;
   const didInit = useRef(false);
 
   const activeIndex = Math.max(0, tabs.findIndex((t) => t.id === currentScreen));
-  const dotSize = 5;
+  const dotSize = 6;
 
-  useEffect(() => {
-    if (tabsWidth <= 0) return;
-    const segment = tabsWidth / tabs.length;
-    const target = activeIndex * segment + segment / 2 - dotSize / 2;
+  const animateDotToActive = React.useCallback(() => {
+    const layout = tabLayouts.current[activeIndex];
+    if (!layout || layout.width <= 0) return;
+    const target = layout.x + layout.width / 2 - dotSize / 2;
 
     if (!didInit.current) {
       slideX.setValue(target);
@@ -55,12 +55,18 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
       easing: Easing.bezier(0.22, 1, 0.36, 1),
       useNativeDriver: true,
     }).start();
-  }, [activeIndex, tabsWidth, slideX]);
+  }, [activeIndex, dotSize, slideX]);
 
-  const onTabsLayout = (e) => {
-    const w = e.nativeEvent.layout.width;
-    if (w > 0 && Math.abs(w - tabsWidth) > 0.5) {
-      setTabsWidth(w);
+  useEffect(() => {
+    animateDotToActive();
+  }, [animateDotToActive]);
+
+  const onTabLayout = (index, event) => {
+    const { x, width } = event.nativeEvent.layout;
+    if (width <= 0) return;
+    tabLayouts.current[index] = { x, width };
+    if (index === activeIndex) {
+      animateDotToActive();
     }
   };
 
@@ -109,14 +115,30 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
           pointerEvents="none"
           style={[StyleSheet.absoluteFill, { backgroundColor: glass.fillStrong, borderRadius: borderRadius['2xl'] }]}
         />
-        <View style={styles.tabsRow} onLayout={onTabsLayout}>
-          {tabs.map((tab) => {
+        <View style={styles.tabsRow}>
+          <View style={styles.indicatorTrack} pointerEvents="none">
+            <Animated.View
+              style={[
+                styles.indicatorDot,
+                shadowsThemed.accentGlow,
+                {
+                  width: dotSize,
+                  height: dotSize,
+                  top: (ICON_SLOT_H - dotSize) / 2,
+                  backgroundColor: colors.primary,
+                  transform: [{ translateX: slideX }],
+                },
+              ]}
+            />
+          </View>
+          {tabs.map((tab, index) => {
             const active = currentScreen === tab.id;
             const showBadge = tab.id === 'Cart' && cartCount > 0;
             return (
               <TouchableOpacity
                 key={tab.id}
                 style={styles.tabButton}
+                onLayout={(event) => onTabLayout(index, event)}
                 onPressIn={() => handleTabNavigate(tab.id)}
                 onPress={() => handleTabPulse(tab.id)}
                 delayPressIn={0}
@@ -153,21 +175,6 @@ export default function TabBar({ currentScreen, onNavigate, cartItems }) {
             );
           })}
         </View>
-
-        <View style={styles.indicatorTrack} pointerEvents="none">
-          <Animated.View
-            style={[
-              styles.indicatorDot,
-              shadowsThemed.accentGlow,
-              {
-                width: dotSize,
-                height: dotSize,
-                backgroundColor: colors.primary,
-                transform: [{ translateX: slideX }],
-              },
-            ]}
-          />
-        </View>
       </View>
     </View>
   );
@@ -188,18 +195,18 @@ const styles = StyleSheet.create({
   tabsRow: {
     flexDirection: 'row',
     width: '100%',
+    position: 'relative',
   },
   indicatorTrack: {
     position: 'absolute',
     left: 0,
     right: 0,
-    top: BAR_PADDING_TOP + ICON_SLOT_H - 2,
-    height: 8,
+    top: 0,
+    height: ICON_SLOT_H,
   },
   indicatorDot: {
     position: 'absolute',
     left: 0,
-    top: 0,
     borderRadius: borderRadius.round,
   },
   tabButton: {

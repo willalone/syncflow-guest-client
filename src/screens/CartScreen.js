@@ -3,7 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getColors, getShadows, layout, spacing, typography } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
-import { calculateCartTotal } from '../utils/cart';
+import { useClientData } from '../contexts/ClientDataContext';
+import { calculateCartTotal, getCartCount } from '../utils/cart';
 import ScreenBackdrop from '../components/ScreenBackdrop';
 import CartItemsList from './cart/CartItemsList';
 import CartSimpleFooter from './cart/CartSimpleFooter';
@@ -11,11 +12,13 @@ import CartSimpleFooter from './cart/CartSimpleFooter';
 export default function CartScreen({
   cartItems,
   dishes = [],
+  onOpenDish,
   onChangeQty,
   onProceedToCheckout,
   networkOffline = false,
 }) {
   const { isDarkMode } = useTheme();
+  const { refreshClientData, isRefreshing } = useClientData();
   const colors = getColors(isDarkMode);
   const shadowsThemed = useMemo(() => getShadows(isDarkMode), [isDarkMode]);
 
@@ -47,10 +50,7 @@ export default function CartScreen({
     [cartItems, dishById]
   );
   const total = useMemo(() => calculateCartTotal(cartItems, dishes), [cartItems, dishes]);
-  const itemCount = useMemo(
-    () => cartItems.reduce((sum, row) => sum + Number(row.quantity || 0), 0),
-    [cartItems]
-  );
+  const itemCount = useMemo(() => getCartCount(cartItems, dishes), [cartItems, dishes]);
 
   return (
     <ScreenBackdrop isDarkMode={isDarkMode}>
@@ -65,7 +65,10 @@ export default function CartScreen({
             colors={colors}
             shadows={shadowsThemed}
             cartData={cartData}
+            onOpenDish={onOpenDish}
             onChangeQty={onChangeQty}
+            onRefresh={refreshClientData}
+            refreshing={isRefreshing}
           />
         </View>
         <CartSimpleFooter
@@ -95,6 +98,12 @@ const styles = StyleSheet.create({
   empty: { ...typography.body, textAlign: 'center', marginTop: spacing.xl },
   itemGlass: { marginBottom: 0 },
   itemRow: { flexDirection: 'row', alignItems: 'center' },
+  itemMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
   image: {
     width: 88,
     height: 88,

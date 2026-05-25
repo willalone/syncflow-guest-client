@@ -39,7 +39,7 @@ export default function AuthScreen({ onBackToMenu }) {
   const [login, setLogin] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('+7 ');
+  const [phone, setPhone] = useState('+7(');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

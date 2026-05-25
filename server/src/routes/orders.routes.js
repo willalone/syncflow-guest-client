@@ -175,6 +175,26 @@ router.get(
       [orderIds]
     );
 
+    const [reviewRows] = await db.query(
+      `
+      SELECT order_id, rating, comment, created_at
+      FROM menu_item_reviews
+      WHERE user_id = ? AND order_id IN (?)
+      `,
+      [userId, orderIds]
+    );
+    const reviewByOrderId = new Map();
+    reviewRows.forEach((row) => {
+      reviewByOrderId.set(row.order_id, {
+        reviewed: true,
+        review: {
+          rating: Number(row.rating),
+          comment: row.comment || '',
+          createdAt: row.created_at,
+        },
+      });
+    });
+
     const itemsByOrder = new Map();
     items.forEach((item) => {
       if (!itemsByOrder.has(item.order_id)) itemsByOrder.set(item.order_id, []);
@@ -189,6 +209,7 @@ router.get(
     res.json(
       orders.map((order) => {
         const isPaid = ['confirmed', 'completed'].includes(String(order.status || ''));
+        const reviewMeta = reviewByOrderId.get(order.id);
         return {
           ...parseOrderMeta(order.comment),
           id: `order-${order.id}`,
@@ -204,6 +225,8 @@ router.get(
           createdAt: order.created_at,
           status: order.status,
           items: itemsByOrder.get(order.id) || [],
+          reviewed: Boolean(reviewMeta?.reviewed),
+          review: reviewMeta?.review,
         };
       })
     );

@@ -152,35 +152,29 @@ export const typography = {
 };
 
 /**
- * Drop shadow карточек (Figma: X93 Y133 Blur250 Spread33).
- * offsetX < 0 и большой insetRight → тень только вниз-влево; blur через слои в CardDropShadow.
+ * «Парящие» карточки меню: лёгкая, но читаемая тень вниз-влево.
+ * По силе ближе к accentGlow, но без цветного свечения — только объём.
  */
-export const getCardDropShadowSpec = (isDarkMode = false) => {
-  const scale = 0.18;
-  const offsetX = -Math.round(93 * scale);
-  const offsetY = Math.round(133 * scale);
-  return {
-    offsetX,
-    offsetY,
-    blur: Math.round(250 * scale),
-    spread: Math.max(5, Math.round(33 * scale)),
-    /** Сжимает подложку справа — тень не «уезжает» в правый нижний угол. */
-    insetRight: 28,
-    opacity: isDarkMode ? 0.47 : 0.25,
-    color: '#000000',
-  };
-};
+export const getCardDropShadowSpec = (isDarkMode = false) => ({
+  offsetX: -6,
+  offsetY: 10,
+  blur: 22,
+  spread: 3,
+  insetRight: 14,
+  opacity: isDarkMode ? 0.3 : 0.22,
+  color: isDarkMode ? '#000000' : '#4A3A58',
+});
 
-/** Лёгкий native-слой (только iOS, в ту же сторону). */
+/** iOS — основной слой; Android дополняется подложками в CardDropShadow. */
 export const getCardDropShadowNativeStyle = (isDarkMode = false) => {
   const spec = getCardDropShadowSpec(isDarkMode);
   if (Platform.OS !== 'ios') {
-    return { elevation: 0 };
+    return {};
   }
   return {
     shadowColor: spec.color,
     shadowOffset: { width: spec.offsetX, height: spec.offsetY },
-    shadowOpacity: spec.opacity * 0.35,
+    shadowOpacity: spec.opacity,
     shadowRadius: spec.blur,
   };
 };

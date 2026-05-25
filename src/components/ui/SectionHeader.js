@@ -1,10 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { fontFamily, spacing, typography } from '../../constants/theme';
+import { fontFamily, layout, spacing, typography } from '../../constants/theme';
 
-export default function SectionHeader({ title, hint, actionLabel, onAction, colors }) {
+export default function SectionHeader({ title, hint, actionLabel, onAction, colors, style }) {
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, style]}>
       <View style={styles.titles}>
         <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
         {hint ? <Text style={[styles.hint, { color: colors.textMuted }]}>{hint}</Text> : null}
@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.screenPaddingX,
     marginBottom: spacing.sm,
     gap: spacing.sm,
   },

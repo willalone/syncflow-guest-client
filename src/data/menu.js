@@ -344,4 +344,31 @@ export const bookingTables = [
     imageUrl:
       'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=900&q=80',
   },
+  {
+    id: 't4',
+    name: 'У камина',
+    seats: 2,
+    from: '12:00',
+    to: '23:00',
+    address: 'Москва, ул. Пушкина, 10',
+    imageUrl: '',
+  },
+  {
+    id: 't5',
+    name: 'Центр зала',
+    seats: 4,
+    from: '11:00',
+    to: '23:00',
+    address: 'Москва, ул. Пушкина, 10',
+    imageUrl: '',
+  },
+  {
+    id: 't6',
+    name: 'VIP',
+    seats: 8,
+    from: '18:00',
+    to: '23:00',
+    address: 'Москва, ул. Пушкина, 10',
+    imageUrl: '',
+  },
 ];

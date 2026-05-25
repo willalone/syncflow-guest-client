@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
 } from 'react-native';
@@ -13,7 +12,14 @@ import ScreenBackdrop from '../components/ScreenBackdrop';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useClientData } from '../contexts/ClientDataContext';
-import { applyDateMask, applyPhoneMask, isValidDateMask } from '../utils/inputMasks';
+import {
+  applyDateMask,
+  applyPhoneMask,
+  isValidDateMask,
+  isValidPhoneMask,
+  PHONE_MASK_MAX_LENGTH,
+} from '../utils/inputMasks';
+import { formatRubles } from '../utils/money';
 import { runtimeConfig } from '../config/runtimeConfig';
 import * as clientApi from '../services/api/clientApi';
 import ProfileHeaderCard from './profile/ProfileHeaderCard';
@@ -21,6 +27,7 @@ import ProfileStatsCard from './profile/ProfileStatsCard';
 import ProfileHistorySection, { ProfileHistoryCard } from './profile/ProfileHistorySection';
 import DeleteAccountModal from './profile/DeleteAccountModal';
 import ThemeToggle from '../components/profile/ThemeToggle';
+import RubberScrollView from '../components/ui/RubberScrollView';
 
 export default function ProfileScreen({
   onOpenNotifications,
@@ -29,7 +36,17 @@ export default function ProfileScreen({
 }) {
   const { isDarkMode } = useTheme();
   const { user, signOut, updateAccount, deleteAccount, refreshSessionFromStorage } = useAuth();
-  const { bookings, orders, profile, saveProfile, favorites, notifications, notificationsUnreadCount } = useClientData();
+  const {
+    bookings,
+    orders,
+    profile,
+    saveProfile,
+    favorites,
+    notifications,
+    notificationsUnreadCount,
+    refreshClientData,
+    isRefreshing,
+  } = useClientData();
   const isSyncflowBackend = runtimeConfig.integratedBackend === 'syncflow';
   const colors = getColors(isDarkMode);
   const shadowsThemed = useMemo(() => getShadows(isDarkMode), [isDarkMode]);
@@ -55,7 +72,9 @@ export default function ProfileScreen({
       birthDate: profile?.birthDate || '',
       login: profile?.login || user?.login || '',
       email: profile?.email || user?.email || '',
-      phoneNumber: profile?.phoneNumber || profile?.phone || user?.phoneNumber || user?.phone || '',
+      phoneNumber: applyPhoneMask(
+        profile?.phoneNumber || profile?.phone || user?.phoneNumber || user?.phone || ''
+      ),
       password: '',
     });
   }, [profile, user]);
@@ -102,9 +121,9 @@ export default function ProfileScreen({
       birthDate: String(profile?.birthDate || '').trim(),
       login: String(profile?.login || user?.login || '').trim(),
       email: String(profile?.email || user?.email || '').trim(),
-      phoneNumber: String(
+      phoneNumber: applyPhoneMask(
         profile?.phoneNumber || profile?.phone || user?.phoneNumber || user?.phone || ''
-      ).trim(),
+      ),
     }),
     [profile, user]
   );
@@ -126,6 +145,16 @@ export default function ProfileScreen({
     if (form.birthDate && !isValidDateMask(form.birthDate)) {
       setSaveStatusIsError(true);
       setSaveStatus('Проверьте дату рождения: формат ДД.ММ.ГГГГ');
+      return;
+    }
+    if (
+      isSyncflowBackend &&
+      form.phoneNumber.trim() &&
+      form.phoneNumber.trim() !== '+7(' &&
+      !isValidPhoneMask(form.phoneNumber)
+    ) {
+      setSaveStatusIsError(true);
+      setSaveStatus('Укажите полный номер телефона: +7(___)___-__-__');
       return;
     }
     const profilePatch = {
@@ -191,12 +220,14 @@ export default function ProfileScreen({
           </View>
         </View>
 
-        <ScrollView
+        <RubberScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           nestedScrollEnabled
+          onRefresh={refreshClientData}
+          refreshing={isRefreshing}
         >
         <ProfileHeaderCard colors={colors} shadowsThemed={shadowsThemed} fullName={fullName} role={profile?.role} />
 
@@ -281,11 +312,14 @@ export default function ProfileScreen({
               />
               <TextInput
                 style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.backgroundLight }]}
-                placeholder="Телефон для бронирования (+7…)"
+                placeholder="+7(___)___-__-__"
                 placeholderTextColor={colors.textMuted}
                 value={form.phoneNumber}
-                onChangeText={(value) => setForm((prev) => ({ ...prev, phoneNumber: value }))}
+                onChangeText={(value) =>
+                  setForm((prev) => ({ ...prev, phoneNumber: applyPhoneMask(value) }))
+                }
                 keyboardType="phone-pad"
+                maxLength={PHONE_MASK_MAX_LENGTH}
               />
             </>
           ) : null}
@@ -362,7 +396,7 @@ export default function ProfileScreen({
         >
           {ordersPreview.map((order) => (
             <ProfileHistoryCard key={order.id} colors={colors}>
-              <Text style={[styles.historyTitle, { color: colors.text }]}>Сумма: {order.total} руб.</Text>
+              <Text style={[styles.historyTitle, { color: colors.text }]}>Сумма: {formatRubles(order.total)} ₽</Text>
               <Text style={[styles.historyText, { color: colors.textLight }]}>
                 Адрес: {order.bookingDraft?.address || 'не указан'} • Бонусы: -{order.bonusSpent || 0} / +{order.bonusEarned || 0}
               </Text>
@@ -387,7 +421,7 @@ export default function ProfileScreen({
         >
           <Text style={[styles.deleteText, { color: colors.error }]}>Удалить аккаунт</Text>
         </TouchableOpacity>
-        </ScrollView>
+        </RubberScrollView>
         <DeleteAccountModal
           visible={isDeleteConfirmVisible}
           colors={colors}

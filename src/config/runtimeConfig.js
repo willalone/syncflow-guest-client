@@ -11,12 +11,16 @@ const restaurantId =
     ? String(extra.restaurantId).trim()
     : null;
 
+/** Статический каталог столов зала (id из SyncFlow), если гостю недоступен GET /tables. */
+const hallTableCatalog = Array.isArray(extra.hallTableCatalog) ? extra.hallTableCatalog : [];
+
 export const runtimeConfig = {
   /** Mock только при явном useMockApi: true (безопасно для production по умолчанию). */
   useMockApi: extra.useMockApi === true,
   apiBaseUrl: String(extra.apiBaseUrl || 'http://127.0.0.1:3000/api').trim(),
   integratedBackend,
   restaurantId,
+  hallTableCatalog,
   enablePremiumTabGestures: extra.enablePremiumTabGestures === true,
   appOwnership: Constants?.appOwnership || 'unknown',
   buildProfile: String(extra.buildProfile || 'development'),
